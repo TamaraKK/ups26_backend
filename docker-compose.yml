@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    container_name: fast_api_app
+    ports:
+      - "8000:8000"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    volumes:
+      - .:/app
+      - ./test.db:/app/test.db
+    restart: always
