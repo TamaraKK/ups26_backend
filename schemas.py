@@ -42,7 +42,7 @@ class DeviceOut(BaseModel):
     serial: str
     type: str
     group_id: Optional[int]
-    group: Optional[GroupOut] = None
+    # group: Optional[GroupOut] = None
     model_config = {"from_attributes": True}
 
 
