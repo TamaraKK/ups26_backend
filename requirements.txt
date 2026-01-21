@@ -2,3 +2,7 @@ fastapi
 uvicorn
 asyncpg
 sqlalchemy
+fastapi-mqtt
+protobuf
+prometheus-client
+httpx

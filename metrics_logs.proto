@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package telemetry;
+
+message Label {
+  string name = 1;
+  string value = 2;
+}
+
+message LogEntry {
+  int64 timestamp_ns = 1;
+  string message = 2;
+  repeated Label labels = 3;
+}
+
+message Metric {
+  string name = 1;
+  double value = 2;
+  int64 timestamp_ms = 3;
+  repeated Label labels = 4;
+  MetricType type = 5;
+  
+  enum MetricType {
+    COUNTER = 0;
+    GAUGE = 1;
+    HISTOGRAM = 2;
+    SUMMARY = 3;
+  }
+}
+
+message TelemetryMessage {
+  repeated LogEntry logs = 1;
+  repeated Metric metrics = 2;
+  string source = 3;
+  string instance_id = 4;
+}

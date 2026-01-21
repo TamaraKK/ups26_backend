@@ -1,6 +1,4 @@
-global:
-  scrape_interval: 15s
 scrape_configs:
-  - job_name: 'prometheus'
+  - job_name: 'fastapi_app'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['fast_api_app:8000'] 
