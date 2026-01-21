@@ -1,4 +1,7 @@
+
+
 services:
+  # FastAPI 
   web:
     build: .
     container_name: fast_api_app
@@ -9,5 +12,60 @@ services:
       - 1.1.1.1
     volumes:
       - .:/app
-      - ./test.db:/app/test.db
     restart: always
+    depends_on:
+      - postgres
+    networks:
+      - iot_network
+
+  # MQTT Брокер (HiveMQ)
+  hivemq:
+    image: hivemq/hivemq-ce:latest
+    container_name: hivemq_broker
+    ports:
+      - "1883:1883"
+    networks:
+      - iot_network
+
+  # База данных Postgres
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - iot_network
+
+  # Сбор метрик (Prometheus)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - iot_network
+
+  # Сбор логов (Loki)
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - iot_network
+
+networks:
+  iot_network:
+    driver: bridge
+
+volumes:
+  pg_data:
