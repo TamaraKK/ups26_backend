@@ -162,35 +162,62 @@ async def get_metric_history(
 async def get_device_full_report(
     serial: str, 
     db: Session = Depends(get_db),
-    hours: int = Query(3, ge=1)
+    hours: int = Query(3, ge=1, le=168)
 ):
-    # 1. Получаем инфо из БД
+    # 1. Информация об устройстве
     db_device = db.query(models.Device).filter(models.Device.serial == serial).first()
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
-    
-    # Считаем статус онлайн прямо здесь
+
+    # Проверка статуса онлайн
     online_serials = await get_online_serials()
     db_device.is_online = serial in online_serials
 
-    # 2. Получаем Метрики (температура, влажность и т.д.)
-    # Здесь можно сделать цикл по всем метрикам, привязанным к типу устройства
-    # Для примера возьмем 'temp' и 'humidity'
-    metric_names = ["temp", "humidity"] 
+    # 2. Метрики и история
+    # Берем все описания метрик из БД
+    all_meta = db.query(models.MetricMetadata).all()
     metrics_data = []
-    for m_name in metric_names:
-        # Используем твою логику из get_metric_history
-        hist = await get_metric_history(serial, m_name, hours, db)
-        metrics_data.append(hist)
 
-    # 3. Получаем Логи из Loki
-    logs_data = await get_device_logs(serial, limit=50, hours=hours)
+    for meta in all_meta:
+        try:
+            # Получаем историю из Prometheus (вызываем твою функцию)
+            history_response = await get_metric_history(
+                serial=serial, 
+                metric_name=meta.metric_name, 
+                hours=hours, 
+                db=db
+            )
+            
+            # Логика определения статуса "problematic"
+            metric_status = "normal"
+            if history_response["history"]:
+                last_val = history_response["history"][-1]["value"]
+                
+                # Сравниваем с порогами из БД
+                if meta.max_threshold is not None and last_val > meta.max_threshold:
+                    metric_status = "problematic"
+                if meta.min_threshold is not None and last_val < meta.min_threshold:
+                    metric_status = "problematic"
+            
+            history_response["status"] = metric_status
+            metrics_data.append(history_response)
+        except Exception as e:
+            print(f"Error fetching {meta.metric_name}: {e}")
+
+    # 3. Логи из Loki
+    logs_list = []
+    try:
+        logs_res = await get_device_logs(serial=serial, limit=50, hours=hours)
+        logs_list = logs_res.get("logs", [])
+    except Exception as e:
+        print(f"Loki error: {e}")
 
     return {
         "device_info": db_device,
         "metrics": metrics_data,
-        "logs": logs_data["logs"]
+        "logs": logs_list
     }
+
 
 
 # URL для запросов в Loki (Query)

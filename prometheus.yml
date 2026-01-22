@@ -1,5 +1,26 @@
+# scrape_configs:
+#   - job_name: 'pushgateway'
+#     honor_labels: true 
+#     static_configs:
+#       - targets: ['pushgateway:9091']
+
+
+global:
+  scrape_interval: 15s # Как часто Prometheus опрашивает цели
+  evaluation_interval: 15s # Как часто проверяются правила алертов
+
+# Путь к файлу с правилами (алерты на оффлайн и батарейку)
+rule_files:
+  - "alerts.yml"
+
 scrape_configs:
   - job_name: 'pushgateway'
-    honor_labels: true 
+    honor_labels: true # Важно: сохраняет метку serial, которую шлет бэкенд
     static_configs:
       - targets: ['pushgateway:9091']
+
+# Если в будущем добавишь Alertmanager для рассылки в Телеграм/Почту:
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']

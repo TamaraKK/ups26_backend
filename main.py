@@ -25,11 +25,11 @@ app.add_middleware(
 )
 
 # Подключение роутеров
-from routers import groups, devices, projects
+from routers import groups, devices, projects, metadata
 app.include_router(groups.router)
 app.include_router(devices.router)
 app.include_router(projects.router)
-# app.include_router(metadata.router)
+app.include_router(metadata.router)
 
 # Конфигурация MQTT
 mqtt_config = MQTTConfig(host="hivemq_broker", port=1883)

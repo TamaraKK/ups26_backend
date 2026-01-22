@@ -116,9 +116,15 @@ class MetricMetadataBase(BaseModel):
     icon_key: Optional[str] = None
     unit: Optional[str] = None
 
+    min_threshold: Optional[float] = None 
+    max_threshold: Optional[float] = None
+
 class MetricMetadataOut(MetricMetadataBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
+
+    min_threshold: Optional[float] = None 
+    max_threshold: Optional[float] = None
 
 class MetricDataPoint(BaseModel):
     time: int
@@ -129,6 +135,7 @@ class MetricHistoryOut(BaseModel):
     display_name: Optional[str] = None # Возьмем из метаданных
     unit: Optional[str] = None         # Возьмем из метаданных
     history: List[MetricDataPoint]
+    status: str = "normal"
 
 
 class DeviceLogOut(BaseModel):

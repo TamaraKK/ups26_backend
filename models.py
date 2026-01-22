@@ -60,6 +60,9 @@ class MetricMetadata(Base):
     icon_key = Column(String)         
     unit = Column(String)             # '°C'
 
+    min_threshold = Column(Float, nullable=True) # Минимальный порог
+    max_threshold = Column(Float, nullable=True) # Максимальный порог
+
 class Project(Base):
     __tablename__='projects'
 

@@ -1,0 +1,22 @@
+groups:
+  - name: iot_alerts
+    rules:
+      # 1. Аларт на оффлайн (2 часа)
+      - alert: DeviceOffline
+        expr: absent(device_runtime_status == 1) or (time() - push_time_seconds > 60)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Устройство {{ $labels.serial }} не в сети"
+          description: "Данные не поступали более минуты (2 часов)."
+
+      # 2. Низкий заряд батареи (общий для всех)
+      - alert: LowBattery
+        expr: device_battery_level < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Низкий заряд на {{ $labels.source }}"
+          description: "Заряд батареи упал ниже 10%."
