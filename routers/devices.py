@@ -1,3 +1,4 @@
+import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
@@ -105,4 +106,50 @@ def delete_device(device_id: int, db: Session = Depends(get_db)):
     return {"status": "success", "message": "Device deleted"}
 
 
-# массив с мапами name, on, problematic (status) метрики, выходящие за грань, off. по группам и все
+@router.get("/{serial}/metrics/{metric_name}/history", response_model=schemas.MetricHistoryOut)
+async def get_metric_history(
+    serial: str, 
+    metric_name: str, 
+    hours: int = Query(3, ge=1, le=24),
+    db: Session = Depends(get_db)
+):
+    # 1. Ищем метаданные в базе (красивое имя и единицы измерения)
+    meta = db.query(models.MetricMetadata).filter(
+        models.MetricMetadata.metric_name == metric_name
+    ).first()
+
+    # 2. Запрос в Prometheus за цифрами
+    end_time = int(time.time())
+    start_time = end_time - (hours * 3600)
+    full_name = f"device_{metric_name.replace('.', '_')}"
+    
+    params = {
+        "query": f'{full_name}{{source="{serial}"}}',
+        "start": start_time,
+        "end": end_time,
+        "step": "60s"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            # Тут используем URL прометея /query_range
+            resp = await client.get("http://prometheus:9090/api/v1/query_range", params=params)
+            data = resp.json()
+            
+            history = []
+            if data.get("data", {}).get("result"):
+                # Парсим хитрый формат Прометея [[ts, val], [ts, val]...]
+                for val in data["data"]["result"][0]["values"]:
+                    history.append({
+                        "time": int(val[0]),
+                        "value": float(val[1])
+                    })
+
+            return {
+                "metric_name": metric_name,
+                "display_name": meta.display_name_ru if meta else metric_name,
+                "unit": meta.unit if meta else "",
+                "history": history
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Prometheus error: {e}")

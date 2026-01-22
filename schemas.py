@@ -119,6 +119,17 @@ class MetricMetadataOut(MetricMetadataBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
 
+class MetricDataPoint(BaseModel):
+    time: int
+    value: float
+
+class MetricHistoryOut(BaseModel):
+    metric_name: str
+    display_name: Optional[str] = None # Возьмем из метаданных
+    unit: Optional[str] = None         # Возьмем из метаданных
+    history: List[MetricDataPoint]
+
+
 # --- Detail Schemas ---
 class GroupDetail(GroupOut):
     devices: List[DeviceOut] = []
