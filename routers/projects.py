@@ -6,7 +6,7 @@ from utils.dependencies import get_db
 
 router = APIRouter(prefix="/projects", tags=["Projects (Device Types)"])
 
-@router.post("/", response_model=schemas.DeviceTypeOut)
+@router.post("", response_model=schemas.DeviceTypeOut)
 def create_project(project: schemas.DeviceTypeCreate, db: Session = Depends(get_db)):
     existing = db.query(models.DeviceType).filter(models.DeviceType.name == project.name).first()
     if existing:
@@ -18,7 +18,7 @@ def create_project(project: schemas.DeviceTypeCreate, db: Session = Depends(get_
     db.refresh(db_project)
     return db_project
 
-@router.get("/", response_model=list[schemas.DeviceTypeOut])
+@router.get("", response_model=list[schemas.DeviceTypeOut])
 def list_projects(db: Session = Depends(get_db)):
     return db.query(models.DeviceType).all()
 

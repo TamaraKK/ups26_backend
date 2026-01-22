@@ -22,7 +22,7 @@ async def get_online_serials() -> set:
         print(f"Prometheus connection error: {e}")
         return set()
 
-@router.post("/", response_model=schemas.DeviceOut)
+@router.post("", response_model=schemas.DeviceOut)
 def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
     type_exists = db.query(models.DeviceType).filter(models.DeviceType.id == device.type_id).first()
     if not type_exists:
@@ -41,7 +41,7 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
     db_device.is_online = True
     return db_device
 
-@router.get("/", response_model=List[schemas.DeviceOut])
+@router.get("", response_model=List[schemas.DeviceOut])
 async def list_devices(db: Session = Depends(get_db)):
     db_devices = db.query(models.Device).all()
     online_serials = await get_online_serials()
