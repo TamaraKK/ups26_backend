@@ -5,13 +5,27 @@ __pycache__/
 .venv/
 venv/
 env/
+.pytest_cache/
+
+# Сгенерированные файлы Protobuf 
+# (Их лучше генерировать при сборке образа, а не хранить в гите)
+*_pb2.py
+
+# Конфиденциальные данные
 .env
 
-# Databases (SQLite)
+# Базы данных
 *.db
 *.sqlite3
+postgres_data/
 
-# IDEs
+# Docker
+.docker_temp/
+
+# Локальные скрипты для тестов
+simulate_dryer.py
+
+# IDE
 .vscode/
 .idea/
 
@@ -19,7 +33,5 @@ env/
 .DS_Store
 Thumbs.db
 
-
 # model
-
 model
