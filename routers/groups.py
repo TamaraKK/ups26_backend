@@ -42,33 +42,30 @@ def delete_group(group_id: int, db: Session = Depends(get_db)):
 
 
 PROMETHEUS_URL = "http://prometheus:9090/api/v1/query"
+# routers/groups.py
 
 @router.get("/dashboard/{project_id}", response_model=schemas.ProjectDashboardOut)
 async def get_project_dashboard(project_id: int, db: Session = Depends(get_db)):
-    # 1. Получаем живые серийники из Prometheus
+    # 1. Считаем онлайн только тех, кто присылал данные в последние 5 минут (300 сек)
     online_serials = set()
     try:
+        query = 'device_runtime_status == 1 and (time() - push_time_seconds < 300)'
         async with httpx.AsyncClient() as client:
-            resp = await client.get(PROMETHEUS_URL, params={"query": "device_runtime_status == 1"})
+            resp = await client.get(PROMETHEUS_URL, params={"query": query})
             results = resp.json().get("data", {}).get("result", [])
             online_serials = {r["metric"]["serial"] for r in results}
     except Exception as e:
-        print(f"Prometheus connection error: {e}")
+        print(f"Prometheus error: {e}")
 
-    groups = db.query(models.Group).all()
+    # 2. Берем группы, принадлежащие конкретному проекту
+    groups = db.query(models.Group).filter(models.Group.project_id == project_id).all()
     
     groups_stat = []
-    total_on = 0
-    total_off = 0
+    total_on, total_off = 0, 0
 
     for group in groups:
-        project_devices = [d for d in group.devices if d.type_id == project_id]
-        
-        if not project_devices:
-            continue # Пропускаем группу, если в ней нет девайсов этого проекта
-
         on, off = 0, 0
-        for dev in project_devices:
+        for dev in group.devices:
             if dev.serial in online_serials:
                 on += 1
                 total_on += 1
@@ -91,3 +88,31 @@ async def get_project_dashboard(project_id: int, db: Session = Depends(get_db)):
         }
     }
 
+@router.get("/dashboard/{project_id}/details")
+async def get_project_detailed_status(project_id: int, db: Session = Depends(get_db)):
+    """Возвращает список групп, а внутри каждой - список устройств с их статусом"""
+    online_serials = set() 
+    try:
+        query = 'device_runtime_status == 1 and (time() - push_time_seconds < 300)'
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(PROMETHEUS_URL, params={"query": query})
+            results = resp.json().get("data", {}).get("result", [])
+            online_serials = {r["metric"]["serial"] for r in results}
+    except: pass
+
+    groups = db.query(models.Group).filter(models.Group.project_id == project_id).all()
+    
+    output = []
+    for group in groups:
+        devs = []
+        for d in group.devices:
+            devs.append({
+                "name": d.alias or d.serial,
+                "is_online": d.serial in online_serials,
+                "serial": d.serial
+            })
+        output.append({
+            "group_name": group.name,
+            "devices": devs
+        })
+    return output

@@ -12,7 +12,9 @@ async def get_online_serials() -> set:
     """Вспомогательная функция: получает набор всех серийников, которые сейчас Online"""
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(PROMETHEUS_URL, params={"query": "device_runtime_status == 1"})
+            # resp = await client.get(PROMETHEUS_URL, params={"query": "device_runtime_status == 1"})
+            query = 'device_runtime_status == 1 and (time() - push_time_seconds < 300)'
+            resp = await client.get(PROMETHEUS_URL, params={"query": query})
             results = resp.json().get("data", {}).get("result", [])
             return {r["metric"]["serial"] for r in results}
     except Exception as e:

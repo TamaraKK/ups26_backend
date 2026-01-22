@@ -57,7 +57,6 @@ message Event {
 } 
  
 message DeviceState { 
-  bool is_online = 1; 
   double battery_level = 2;     
   double signal_strength = 3;   
   repeated KeyValue extra = 4; 

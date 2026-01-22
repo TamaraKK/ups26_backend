@@ -75,4 +75,4 @@ class Group(Base):
     type = Column(Enum(GroupTypeEnum), default=GroupTypeEnum.custom)
     
     devices = relationship("Device", back_populates="group")
-    project_id = Column(Integer, ForeignKey('device_types.id'), nullable=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
