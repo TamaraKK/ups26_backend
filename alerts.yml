@@ -1,22 +1,37 @@
 groups:
   - name: iot_alerts
     rules:
-      # 1. Аларт на оффлайн (2 часа)
+      # 1. Аларт на оффлайн (если данных нет более 2 часов)
+      # Используем push_time_seconds, который мы создаем в Pushgateway
       - alert: DeviceOffline
-        expr: absent(device_runtime_status == 1) or (time() - push_time_seconds > 60)
-        for: 5m
+        expr: (time() - push_time_seconds) > 7200
         labels:
           severity: critical
+          # Прокидываем серийник, чтобы бэкенд мог сопоставить с базой
+          serial: "{{ $labels.serial }}"
         annotations:
           summary: "Устройство {{ $labels.serial }} не в сети"
-          description: "Данные не поступали более минуты (2 часов)."
+          description: "Данные от устройства {{ $labels.serial }} не поступали более 2 часов."
 
-      # 2. Низкий заряд батареи (общий для всех)
+      # 2. Низкий заряд батареи (ниже 10%)
       - alert: LowBattery
         expr: device_battery_level < 10
-        for: 10m
+        for: 5m
         labels:
           severity: warning
+          serial: "{{ $labels.source }}"
         annotations:
-          summary: "Низкий заряд на {{ $labels.source }}"
-          description: "Заряд батареи упал ниже 10%."
+          summary: "Низкий заряд батареи"
+          description: "На устройстве {{ $labels.source }} уровень заряда упал до {{ $value }}%."
+
+      # 3. Перегрев (пример технического алерта)
+      # Если температура выше 80 градусов дольше 2 минут
+      - alert: DeviceOverheating
+        expr: device_temp > 80
+        for: 2m
+        labels:
+          severity: critical
+          serial: "{{ $labels.source }}"
+        annotations:
+          summary: "Перегрев устройства"
+          description: "Температура на {{ $labels.source }} поднялась до {{ $value }}°C."

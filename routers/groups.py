@@ -7,6 +7,59 @@ import httpx
 
 router = APIRouter(prefix="/groups", tags=["Groups"])
 
+
+PROMETHEUS_ALERTS_URL = "http://prometheus:9090/api/v1/alerts"
+
+@router.get("/alerts", response_model=List[schemas.AlertWithMetadata])
+async def get_all_active_alerts(db: Session = Depends(get_db)):
+    """Получить все активные алерты, обогащенные метаданными группы и устройства"""
+    
+    # 1. Запрос в Prometheus за активными алертами
+    prometheus_alerts = []
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("http://prometheus:9090/api/v1/alerts")
+            prometheus_alerts = resp.json().get("data", {}).get("alerts", [])
+    except Exception as e:
+        print(f"Prometheus Alerts Error: {e}")
+        return []
+
+    # 2. Берем устройства для маппинга
+    devices = db.query(models.Device).all()
+    device_map = {
+        d.serial: {
+            "group": d.group.name if d.group else "Без группы",
+            "alias": d.alias or d.serial
+        } for d in devices
+    }
+
+    # 3. Собираем плоский список с метаданными
+    enriched_alerts = []
+    
+    for alert in prometheus_alerts:
+        if alert["state"] != "firing":
+            continue
+            
+        # Пытаемся достать серийник из лейблов
+        serial = alert["labels"].get("serial") or alert["labels"].get("source")
+        
+        # Данные из БД (если нашли)
+        meta = device_map.get(serial, {"group": "Неизвестно", "alias": serial})
+
+        enriched_alerts.append({
+            "alertname": alert["labels"].get("alertname"),
+            "severity": alert["labels"].get("severity", "warning"),
+            "summary": alert["annotations"].get("summary", ""),
+            "description": alert["annotations"].get("description", ""),
+            "active_at": alert.get("activeAt"),
+            "serial": serial or "unknown",
+            "device_alias": meta["alias"],
+            "group_name": meta["group"]
+        })
+
+    return enriched_alerts
+
+
 @router.post("/", response_model=schemas.GroupOut)
 def create_group(group: schemas.GroupCreate, db: Session = Depends(get_db)):
     db_group = models.Group(**group.model_dump())
@@ -116,3 +169,5 @@ async def get_project_detailed_status(project_id: int, db: Session = Depends(get
             "devices": devs
         })
     return output
+
+

@@ -156,6 +156,34 @@ class DeviceFullDetailOut(BaseModel):
     # Данные из Loki
     logs: List[DeviceLogOut]
 
+
+class ActiveAlert(BaseModel):
+    alertname: str
+    severity: str
+    summary: str
+    description: str
+    active_at: str
+
+class DeviceAlerts(BaseModel):
+    serial: str
+    alias: Optional[str]
+    alerts: List[ActiveAlert]
+
+class GroupedAlertsOut(BaseModel):
+    # Группировка: Имя группы -> Список устройств с их алертами
+    groups: dict[str, List[DeviceAlerts]]
+
+class AlertWithMetadata(BaseModel):
+    alertname: str
+    severity: str
+    summary: str
+    description: str
+    active_at: str
+
+    serial: str
+    device_alias: Optional[str] = None
+    group_name: str = "Без группы"
+
 # --- Detail Schemas ---
 class GroupDetail(GroupOut):
     devices: List[DeviceOut] = []
