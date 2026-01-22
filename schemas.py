@@ -16,6 +16,8 @@ class GroupCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     type: GroupTypeEnum
 
+    project_id: Optional[int] = None 
+
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     type: Optional[GroupTypeEnum] = None
@@ -24,6 +26,7 @@ class GroupOut(BaseModel):
     id: int
     name: str
     type: GroupTypeEnum
+    project_id: Optional[int]
     model_config = ConfigDict(from_attributes=True)
 
 # --- Device Type (Project) Schemas ---
