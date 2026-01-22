@@ -107,6 +107,7 @@ class ProjectDashboardOut(BaseModel):
     groups_stat: List[GroupAnalytics]
     total_stat: DeviceStats
 
+# метрики и логи
 
 class MetricMetadataBase(BaseModel):
     metric_name: str
@@ -129,6 +130,24 @@ class MetricHistoryOut(BaseModel):
     unit: Optional[str] = None         # Возьмем из метаданных
     history: List[MetricDataPoint]
 
+
+class DeviceLogOut(BaseModel):
+    timestamp: str  # Время события
+    level: str      # INFO, ERROR, WARN
+    message: str    # Текст лога
+
+class DeviceLogsResponse(BaseModel):
+    serial: str
+    logs: List[DeviceLogOut]
+
+
+class DeviceFullDetailOut(BaseModel):
+    # Данные из PostgreSQL
+    device_info: DeviceOut 
+    # Данные из Prometheus (последние точки по ключевым метрикам)
+    metrics: List[MetricHistoryOut] 
+    # Данные из Loki
+    logs: List[DeviceLogOut]
 
 # --- Detail Schemas ---
 class GroupDetail(GroupOut):

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -153,3 +154,97 @@ async def get_metric_history(
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Prometheus error: {e}")
+
+
+
+
+@router.get("/{serial}/full-report", response_model=schemas.DeviceFullDetailOut)
+async def get_device_full_report(
+    serial: str, 
+    db: Session = Depends(get_db),
+    hours: int = Query(3, ge=1)
+):
+    # 1. Получаем инфо из БД
+    db_device = db.query(models.Device).filter(models.Device.serial == serial).first()
+    if not db_device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    # Считаем статус онлайн прямо здесь
+    online_serials = await get_online_serials()
+    db_device.is_online = serial in online_serials
+
+    # 2. Получаем Метрики (температура, влажность и т.д.)
+    # Здесь можно сделать цикл по всем метрикам, привязанным к типу устройства
+    # Для примера возьмем 'temp' и 'humidity'
+    metric_names = ["temp", "humidity"] 
+    metrics_data = []
+    for m_name in metric_names:
+        # Используем твою логику из get_metric_history
+        hist = await get_metric_history(serial, m_name, hours, db)
+        metrics_data.append(hist)
+
+    # 3. Получаем Логи из Loki
+    logs_data = await get_device_logs(serial, limit=50, hours=hours)
+
+    return {
+        "device_info": db_device,
+        "metrics": metrics_data,
+        "logs": logs_data["logs"]
+    }
+
+
+# URL для запросов в Loki (Query)
+LOKI_QUERY_URL = "http://loki:3100/loki/api/v1/query_range"
+
+@router.get("/{serial}/logs", response_model=schemas.DeviceLogsResponse)
+async def get_device_logs(
+    serial: str, 
+    limit: int = Query(50, ge=1, le=1000), # Сколько строк вернуть
+    hours: int = Query(24, ge=1)           # За какой период
+):
+    """Получение логов устройства из Loki"""
+    end_time = int(time.time() * 10**9) # Loki любит наносекунды
+    start_time = end_time - (hours * 3600 * 10**9)
+
+    # Формируем LogQL запрос: ищем по лейблу source (который мы слали в main.py)
+    params = {
+        "query": f'{{source="{serial}"}}',
+        "limit": limit,
+        "start": start_time,
+        "end": end_time,
+        "direction": "backward" # Сначала новые
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(LOKI_QUERY_URL, params=params)
+            data = resp.json()
+            
+            output_logs = []
+            
+            # Парсим структуру ответа Loki
+            for stream in data.get("data", {}).get("result", []):
+                # Извлекаем уровень лога из лейблов, если он там есть
+                level = stream.get("stream", {}).get("level", "INFO")
+                
+                for val in stream.get("values", []):
+                    # val[0] - это наносекунды, val[1] - текст сообщения
+                    ts_ns = int(val[0])
+                    # Конвертируем в читаемое время (ISO)
+                    ts_iso = datetime.fromtimestamp(ts_ns / 10**9, tz=timezone.utc).isoformat()
+                    
+                    output_logs.append({
+                        "timestamp": ts_iso,
+                        "level": level,
+                        "message": val[1]
+                    })
+
+            # Сортируем по времени (на случай если было несколько стримов)
+            output_logs.sort(key=lambda x: x["timestamp"], reverse=True)
+
+            return {
+                "serial": serial,
+                "logs": output_logs
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Loki connection error: {e}")
