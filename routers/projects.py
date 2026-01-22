@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import models, schemas
@@ -40,3 +41,12 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
     db.delete(project)
     db.commit()
     return {"status": "success"}
+
+
+@router.get("/{project_id}/devices", response_model=List[schemas.DeviceOut])
+def get_project_devices(project_id: int, db: Session = Depends(get_db)):
+    project = db.query(models.DeviceType).filter(models.DeviceType.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    return project.devices

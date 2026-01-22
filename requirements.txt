@@ -6,3 +6,4 @@ fastapi-mqtt
 protobuf
 prometheus-client
 httpx
+psycopg2-binary

@@ -5,6 +5,8 @@ services:
   web:
     build: .
     container_name: fast_api_app
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     dns:
@@ -15,6 +17,7 @@ services:
     restart: always
     depends_on:
       - postgres
+      - hivemq
     networks:
       - iot_network
 
@@ -62,6 +65,15 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - iot_network
+
+  pushgateway:
+    image: prom/pushgateway:latest
+    container_name: pushgateway
+    ports:
+      - "9091:9091"
+    networks:
+      - iot_network
+
 
 networks:
   iot_network:

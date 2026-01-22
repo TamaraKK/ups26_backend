@@ -1,4 +1,5 @@
 scrape_configs:
-  - job_name: 'fastapi_app'
+  - job_name: 'pushgateway'
+    honor_labels: true 
     static_configs:
-      - targets: ['fast_api_app:8000'] 
+      - targets: ['pushgateway:9091']

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 import models, schemas, httpx
@@ -7,6 +7,17 @@ from utils.dependencies import get_db
 router = APIRouter(prefix="/devices", tags=["Devices"])
 
 PROMETHEUS_URL = "http://prometheus:9090/api/v1/query"
+
+async def get_online_serials() -> set:
+    """Вспомогательная функция: получает набор всех серийников, которые сейчас Online"""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(PROMETHEUS_URL, params={"query": "device_runtime_status == 1"})
+            results = resp.json().get("data", {}).get("result", [])
+            return {r["metric"]["serial"] for r in results}
+    except Exception as e:
+        print(f"Prometheus connection error: {e}")
+        return set()
 
 @router.post("/", response_model=schemas.DeviceOut)
 def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
@@ -23,10 +34,44 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
     db.add(db_device)
     db.commit()
     db.refresh(db_device)
+    # По умолчанию новый девайс онлайн
+    db_device.is_online = True
+    return db_device
+
+@router.get("/", response_model=List[schemas.DeviceOut])
+async def list_devices(db: Session = Depends(get_db)):
+    db_devices = db.query(models.Device).all()
+    online_serials = await get_online_serials()
+    
+    for dev in db_devices:
+        dev.is_online = dev.serial in online_serials
+        
+    return db_devices
+
+@router.get("/stats", response_model=schemas.DeviceStats)
+async def get_device_stats(db: Session = Depends(get_db)):
+    total_count = db.query(models.Device).count()
+    online_serials = await get_online_serials()
+    online_count = len(online_serials)
+            
+    return {
+        "total": total_count,
+        "online": online_count,
+        "offline": max(0, total_count - online_count)
+    }
+
+@router.get("/{device_id}", response_model=schemas.DeviceOut)
+async def get_device(device_id: int, db: Session = Depends(get_db)):
+    db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if not db_device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    online_serials = await get_online_serials()
+    db_device.is_online = db_device.serial in online_serials
     return db_device
 
 @router.patch("/{device_id}", response_model=schemas.DeviceOut)
-def update_device(device_id: int, device_update: schemas.DeviceUpdate, db: Session = Depends(get_db)):
+async def update_device(device_id: int, device_update: schemas.DeviceUpdate, db: Session = Depends(get_db)):
     db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -42,37 +87,10 @@ def update_device(device_id: int, device_update: schemas.DeviceUpdate, db: Sessi
     
     db.commit()
     db.refresh(db_device)
-    return db_device
-
-@router.get("/stats", response_model=schemas.DeviceStats)
-async def get_device_stats(db: Session = Depends(get_db)):
-    # 1. Считаем общее кол-во в базе
-    total_count = db.query(models.Device).count()
     
-    # 2. Опрашиваем Prometheus на наличие активных серийников
-    online_count = 0
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(PROMETHEUS_URL, params={
-                "query": "device_runtime_status == 1"
-            })
-            data = response.json()
-            # Кол-во результатов в списке и есть кол-во онлайн устройств
-            online_count = len(data.get("data", {}).get("result", []))
-    except Exception as e:
-        print(f"Prometheus query error: {e}")
-            
-    return {
-        "total": total_count,
-        "online": online_count,
-        "offline": max(0, total_count - online_count)
-    }
-
-@router.get("/{device_id}", response_model=schemas.DeviceOut)
-def get_device(device_id: int, db: Session = Depends(get_db)):
-    db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
-    if not db_device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    # Обновляем статус после патча для корректного ответа
+    online_serials = await get_online_serials()
+    db_device.is_online = db_device.serial in online_serials
     return db_device
 
 @router.delete("/{device_id}")
@@ -83,7 +101,6 @@ def delete_device(device_id: int, db: Session = Depends(get_db)):
     db.delete(db_device)
     db.commit()
     return {"status": "success", "message": "Device deleted"}
-
 
 
 # массив с мапами name, on, problematic (status) метрики, выходящие за грань, off. по группам и все

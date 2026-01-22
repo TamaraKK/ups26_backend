@@ -6,7 +6,7 @@ from database import Base
 import enum
 
 class GroupEnum(str, enum.Enum):
-    geo = 'geolocation'
+    geolocat = 'geolocation'
     type = 'type'
     status = 'status'
 
@@ -17,6 +17,7 @@ class Point(UserDefinedType):
 class GroupTypeEnum(enum.Enum):
     geolocation = 'geolocation'
     custom = 'custom'
+    geo = 'geo' 
 
 class DeviceType(Base):
     __tablename__ = 'device_types'
@@ -36,7 +37,9 @@ class Device(Base):
     type_id = Column(Integer, ForeignKey('device_types.id'), nullable=True)
     device_type = relationship("DeviceType", back_populates="devices")
 
-    location = Column(Point)  # ???
+    total_work_time = Column(Integer, default=0, server_default="0")
+
+    location = Column(Point, nullable=True)  # ???
     alias = Column(String)             # например "сушилка в цеху №1"
     description = Column(String)       # например "обслуживается по понедельникам"
 
