@@ -13,7 +13,7 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="IoT Manager API (Hybrid Mode)",
-    root_path=''
+    # root_path=''
 )
 
 origins = ["http://localhost:8280", "http://127.0.0.1:8280"]
