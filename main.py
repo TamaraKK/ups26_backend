@@ -16,7 +16,8 @@ app = FastAPI(
     servers=[
         {"url": "http://localhost:8000", "description": "Local development server"},
         {"url": "http://127.0.0.1:8000", "description": "Alternative local server"}
-    ]
+    ],
+    root_path=''
 )
 
 origins = ["http://localhost:8280", "http://127.0.0.1:8280"]
@@ -121,7 +122,7 @@ async def message(client, topic, payload, qos, properties):
 #     # Оставляем старый эндпоинт для совместимости
 #     return Response(generate_latest(), media_type="text/plain")
 
-@app.get("/")
-def root():
-    return {"status": "ok", "mode": "hybrid_push_pull", "date": "2026-01-22"}
+# @app.get("/")
+# def root():
+#     return {"status": "ok", "mode": "hybrid_push_pull", "date": "2026-01-22"}
 
