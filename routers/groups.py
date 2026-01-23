@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from routers.devices import get_online_serials
 import models, schemas
 from utils.dependencies import get_db
 import httpx
@@ -68,17 +69,41 @@ def create_group(group: schemas.GroupCreate, db: Session = Depends(get_db)):
     db.refresh(db_group)
     return db_group
 
-@router.get("", response_model=List[schemas.GroupOut])
-def list_groups(db: Session = Depends(get_db)):
-    return db.query(models.Group).all()
-
+# @router.get("", response_model=List[schemas.GroupOut])
+# def list_groups(db: Session = Depends(get_db)):
+#     return db.query(models.Group).all()
+@router.get("", response_model=List[schemas.GroupDetail])
+async def list_groups(db: Session = Depends(get_db)):
+    groups = db.query(models.Group).all()
+    
+    # Получаем онлайн статусы ОДИН РАЗ
+    online_serials = await get_online_serials()
+    
+    for group in groups:
+        for device in group.devices:
+            device.is_online = device.serial in online_serials
+    
+    return groups
+# @router.get("/{group_id}", response_model=schemas.GroupDetail)
+# def get_group(group_id: int, db: Session = Depends(get_db)):
+#     group = db.query(models.Group).filter(models.Group.id == group_id).first()
+#     if not group:
+#         raise HTTPException(status_code=404, detail="Group not found")
+#     return group
 @router.get("/{group_id}", response_model=schemas.GroupDetail)
-def get_group(group_id: int, db: Session = Depends(get_db)):
+async def get_group(group_id: int, db: Session = Depends(get_db)):
     group = db.query(models.Group).filter(models.Group.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Получаем онлайн статусы
+    online_serials = await get_online_serials()
+    
+    # Устанавливаем is_online для каждого устройства в группе
+    for device in group.devices:
+        device.is_online = device.serial in online_serials
+    
     return group
-
 
 @router.delete("/{group_id}")
 def delete_group(group_id: int, db: Session = Depends(get_db)):
