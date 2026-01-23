@@ -29,23 +29,15 @@ class GroupOut(BaseModel):
     project_id: Optional[int]
     model_config = ConfigDict(from_attributes=True)
 
-# --- Device Type (Project) Schemas ---
-class DeviceTypeOut(BaseModel):
+# --- Project Schemas ---
+class ProjectCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+class ProjectOut(BaseModel):
     id: int
     name: str
-    icon: Optional[str]
-    description: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
-class DeviceTypeCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
-    icon: Optional[str] = None
-
-class DeviceTypeUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    icon: Optional[str] = None
 
 # --- Device Schemas ---
 class DeviceCreate(BaseModel):
