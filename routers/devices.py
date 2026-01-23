@@ -10,35 +10,23 @@ router = APIRouter(prefix="/devices", tags=["Devices"])
 
 PROMETHEUS_URL = "http://prometheus:9090/api/v1/query"
 
-# async def get_online_serials() -> set:
-#     """Вспомогательная функция: получает набор всех серийников, которые сейчас Online"""
-#     try:
-#         async with httpx.AsyncClient() as client:
-#             # resp = await client.get(PROMETHEUS_URL, params={"query": "device_runtime_status == 1"})
-#             query = 'device_runtime_status == 1 and (time() - push_time_seconds < 300)'
-#             resp = await client.get(PROMETHEUS_URL, params={"query": query})
-#             results = resp.json().get("data", {}).get("result", [])
-#             return {r["metric"]["serial"] for r in results}
-#     except Exception as e:
-#         print(f"Prometheus connection error: {e}")
-#         return set()
-
 async def get_online_serials() -> set:
-    """Вспомогательная функция: получает набор всех серийников, которые сейчас Online"""
     try:
         async with httpx.AsyncClient() as client:
-            # Исправленный запрос для метрик из Pushgateway
-            query = 'device_runtime_status'
-            resp = await client.get(PROMETHEUS_URL, params={"query": query})
+            # ПРАВИЛЬНЫЙ запрос
+            resp = await client.get(PROMETHEUS_URL, params={"query": "device_runtime_status"})
             results = resp.json().get("data", {}).get("result", [])
             
             online_serials = set()
             for r in results:
-                # Значение может быть строкой "1" или "0"
-                value = r.get("value", [0, "0"])
-                if len(value) > 1 and value[1] == "1":
-                    online_serials.add(r["metric"].get("serial", ""))
+                serial = r["metric"].get("serial")
+                value = r.get("value", ["", ""])
+                                
+                if serial and len(value) > 1 and value[1] == "1":
+                    online_serials.add(serial)
+            
             return online_serials
+            
     except Exception as e:
         print(f"Prometheus connection error: {e}")
         return set()
@@ -61,8 +49,9 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
 @router.get("", response_model=List[schemas.DeviceOut])
 async def list_devices(db: Session = Depends(get_db)):
     db_devices = db.query(models.Device).all()
+
     online_serials = await get_online_serials()
-    
+
     for dev in db_devices:
         dev.is_online = dev.serial in online_serials
         
