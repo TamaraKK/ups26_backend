@@ -42,22 +42,31 @@ async def send_logs_batch_to_loki(source, telemetry_logs):
     if not telemetry_logs:
         return
 
-    values = []
-    # Используем enumerate, чтобы получить индекс i
-    for i, log in enumerate(telemetry_logs):
-        # Добавляем + i к наносекундам, чтобы гарантировать уникальность
-        ts_ns = str((log.timestamp.seconds * 10**9) + log.timestamp.nanos + i)
+    # 1. Группируем логи по уровню
+    grouped_logs = {}
+    level_names = {v: k for k, v in metrics_logs_pb2.LogLevel.items()}
+    
+    for log in telemetry_logs:
+        level_name = level_names.get(log.level, "UNKNOWN")
+        if level_name not in grouped_logs:
+            grouped_logs[level_name] = []
         
-        # Хорошо бы добавить уровень лога в текст, раз мы его получаем
-        lvl_name = metrics_logs_pb2.LogLevel.Name(log.level)
-        values.append([ts_ns, f"[{lvl_name}] {log.message}"])
+        ts_ns = str((log.timestamp.seconds * 10**9) + log.timestamp.nanos)
+        grouped_logs[level_name].append([ts_ns, log.message])
 
-    payload = {
-        "streams": [{
-            "stream": {"source": source, "job": "device_logs"},
+    # 2. Формируем payload для Loki из сгруппированных логов
+    streams = []
+    for level, values in grouped_logs.items():
+        streams.append({
+            "stream": {
+                "source": source,
+                "job": "device_logs",
+                "level": level # Добавляем уровень как метку
+            },
             "values": values
-        }]
-    }
+        })
+    
+    payload = {"streams": streams}
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(LOKI_URL, json=payload, timeout=2.0)
