@@ -38,42 +38,63 @@ mqtt_client.init_app(app)
 LOKI_URL = "http://loki:3100/loki/api/v1/push"
 PUSHGATEWAY_URL = "pushgateway:9091"
 
-async def send_logs_batch_to_loki(source, telemetry_logs):
+async def send_logs_batch_to_loki(source_value, telemetry_logs):
     if not telemetry_logs:
         return
 
     # 1. Группируем логи по уровню
     grouped_logs = {}
-    level_names = {v: k for k, v in metrics_logs_pb2.LogLevel.items()}
     
+    # Безопасно получаем карту уровней
+    try:
+        level_names = {v: k for k, v in metrics_logs_pb2.LogLevel.items()}
+    except Exception:
+        level_names = {}
+
     for log in telemetry_logs:
-        level_name = level_names.get(log.level, "UNKNOWN")
+        # Проверяем, что log — это объект с нужными атрибутами
+        level_num = getattr(log, 'level', 0)
+        message = getattr(log, 'message', '')
+        timestamp = getattr(log, 'timestamp', None)
+        
+        level_name = level_names.get(level_num, "UNKNOWN")
+        
         if level_name not in grouped_logs:
             grouped_logs[level_name] = []
         
-        ts_ns = str((log.timestamp.seconds * 10**9) + log.timestamp.nanos)
-        grouped_logs[level_name].append([ts_ns, log.message])
+        # Формируем таймстемп в наносекундах (Loki это любит)
+        # if timestamp:
+        #     ts_ns = str((timestamp.seconds * 10**9) + timestamp.nanos)
+        # else:
+        #     ts_ns = str(int(time.time() * 10**9))
+            
+        # grouped_logs[level_name].append([ts_ns, message])
+        current_ts_ns = str(int(time.time() * 10**9))
+        grouped_logs[level_name].append([current_ts_ns, message])
 
-    # 2. Формируем payload для Loki из сгруппированных логов
+    # 2. Формируем payload. ВАЖНО: используем 'serial', как в поиске
     streams = []
     for level, values in grouped_logs.items():
         streams.append({
             "stream": {
-                "source": source,
+                "serial": str(source_value), # Метка должна совпадать с тем, что ищем
                 "job": "device_logs",
-                "level": level # Добавляем уровень как метку
+                "level": level
             },
             "values": values
         })
     
     payload = {"streams": streams}
+    
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.post(LOKI_URL, json=payload, timeout=2.0)
-            if resp.status_code != 204:
-                print(f"Loki Error: {resp.status_code} {resp.text}")
+            # Убедись, что LOKI_URL это http://loki:3100/loki/api/v1/push
+            resp = await client.post(LOKI_URL, json=payload, timeout=5.0)
+            if resp.status_code not in [200, 204]:
+                print(f"Loki Push Error: {resp.status_code} - {resp.text}")
         except Exception as e:
-            print(f"Loki Batch Error: {e}")
+            # Теперь мы увидим реальную причину (Timeout, Connection и т.д.)
+            print(f"Loki Batch Error (Network/HTTP): {type(e).__name__} - {e}")
 
 
 @mqtt_client.on_connect()
@@ -84,7 +105,7 @@ def connect(client, flags, rc, properties):
 @mqtt_client.subscribe("telemetry/#")
 @mqtt_client.on_message()
 async def message(client, topic, payload, qos, properties):
-    print(f"DEBUG: Received message on {topic}")
+    # print(f"DEBUG: Received message on {topic}")
     try:
         # 1. Распаковка Protobuf
         telemetry = metrics_logs_pb2.IoTDeviceTelemetry()
@@ -110,10 +131,27 @@ async def message(client, topic, payload, qos, properties):
             sig.labels(source=device_id).set(telemetry.state.signal_strength)
 
         # 5. Отправка в Pushgateway
+        # try:
+        #     # push_to_gateway(PUSHGATEWAY_URL, job=f"device_{device_id}", registry=registry)
+        #     push_to_gateway(
+        #         PUSHGATEWAY_URL, 
+        #         job="telemetry_processor", # Фиксированное имя job для всего сервиса
+        #         registry=registry,
+        #         grouping_key={'serial': device_id} # ID устройства передаем сюда
+        #     )
+
+        # except Exception as e:
+        #     print(f"Pushgateway Error: {e}")
+
         try:
-            push_to_gateway(PUSHGATEWAY_URL, job=f"device_{device_id}", registry=registry)
+            push_to_gateway(
+                PUSHGATEWAY_URL, 
+                job="telemetry_processor", # Фиксированное имя job
+                registry=registry,
+                grouping_key={'serial': device_id} # ID устройства передаем сюда
+            )
         except Exception as e:
-            print(f"Pushgateway Error: {e}")
+            print(f"Pushgateway Error: {e}")    
 
         # 6. Отправка логов в Loki
         for log in telemetry.logs:
@@ -127,7 +165,7 @@ async def message(client, topic, payload, qos, properties):
             })
             db.commit()
 
-        print(f"Done: {device_id} (Processed via Pushgateway)")
+        # print(f"Done: {device_id} (Processed via Pushgateway)")
     except Exception as e:
         print(f"MQTT Processing Error: {e}")
 

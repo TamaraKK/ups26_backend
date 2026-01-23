@@ -26,6 +26,8 @@ class Device(Base):
     description = Column(String)       # например "обслуживается по понедельникам"
     last_sync = Column(DateTime, nullable=True)
 
+    notes = Column(String)
+
     # TODO: user / org
     group_id = Column(Integer, ForeignKey('groups.id'), nullable=True)
     group = relationship("Group", back_populates="devices")

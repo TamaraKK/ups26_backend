@@ -45,6 +45,7 @@ class DeviceCreate(BaseModel):
     group_id: Optional[int] = None
     alias: Optional[str] = None
     description: Optional[str] = None
+    notes: Optional[str] = None
 
 class DeviceUpdate(BaseModel):
     serial: Optional[str] = Field(None, min_length=1, max_length=50)
@@ -52,12 +53,14 @@ class DeviceUpdate(BaseModel):
     alias: Optional[str] = None
     description: Optional[str] = None
     location: Any = None 
+    notes: Optional[str] = None
 
 class DeviceOut(BaseModel):
     id: int
     serial: str
     alias: Optional[str]
     description: Optional[str]
+    notes: Optional[str] = None
 
     location: Any  
     total_work_time: int = 0
@@ -177,7 +180,15 @@ class AlertWithMetadata(BaseModel):
     group_name: str = "Без группы"
 
 # --- Detail Schemas ---
-class GroupDetail(GroupOut):
-    devices: List[DeviceOut] = []
-
+# class GroupDetail(GroupOut):
+#     devices: List[DeviceOut] = []
+class GroupDetail(BaseModel):
+    id: int
+    name: str
+    type: str
+    project_id: int
+    devices: List[DeviceOut]  # DeviceOut уже содержит is_online
+    
+    model_config = ConfigDict(from_attributes=True)
+    
 GroupDetail.model_rebuild()
