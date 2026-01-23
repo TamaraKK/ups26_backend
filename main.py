@@ -9,12 +9,16 @@ from datetime import datetime, timezone
 import models
 from database import engine, SessionLocal
 
-# Инициализация БД
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="IoT Manager API (Hybrid Mode)")
+app = FastAPI(
+    title="IoT Manager API (Hybrid Mode)",
+    servers=[
+        {"url": "http://localhost:8000", "description": "Local development server"},
+        {"url": "http://127.0.0.1:8000", "description": "Alternative local server"}
+    ]
+)
 
-# Настройка CORS
 origins = ["http://localhost:8280", "http://127.0.0.1:8280"]
 app.add_middleware(
     CORSMiddleware,
@@ -24,30 +28,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключение роутеров
 from routers import groups, devices, projects, metadata
 app.include_router(groups.router)
 app.include_router(devices.router)
 app.include_router(projects.router)
 app.include_router(metadata.router)
 
-# Конфигурация MQTT
 mqtt_config = MQTTConfig(host="hivemq_broker", port=1883)
 mqtt_client = FastMQTT(config=mqtt_config)
 mqtt_client.init_app(app)
 
-# URL внешних сервисов
 LOKI_URL = "http://loki:3100/loki/api/v1/push"
 PUSHGATEWAY_URL = "pushgateway:9091"
 
-# В main.py
 async def send_logs_batch_to_loki(source, telemetry_logs):
     if not telemetry_logs:
         return
 
     values = []
     for log in telemetry_logs:
-        # Считаем наносекунды
         ts_ns = str((log.timestamp.seconds * 10**9) + log.timestamp.nanos)
         values.append([ts_ns, log.message])
 
@@ -63,17 +62,11 @@ async def send_logs_batch_to_loki(source, telemetry_logs):
         except Exception as e:
             print(f"Loki Batch Error: {e}")
 
-# Внутри функции message (MQTT) вместо цикла:
-# await send_logs_batch_to_loki(device_id, telemetry.logs)
-
-
 @mqtt_client.on_connect()
 def connect(client, flags, rc, properties):
-    # Оставляем вашу подписку для надежности
     client.subscribe("telemetry/#") 
     print("Connected to HiveMQ")
 
-# Ваша надежная подписка через декоратор
 @mqtt_client.subscribe("telemetry/#")
 @mqtt_client.on_message()
 async def message(client, topic, payload, qos, properties):
@@ -84,10 +77,8 @@ async def message(client, topic, payload, qos, properties):
         telemetry.ParseFromString(payload)
         device_id = telemetry.info.device_id or "unknown"
 
-        # 2. Логика коллеги: Реестр для Pushgateway
         registry = CollectorRegistry()
         
-        # Метрика статуса
         status_g = Gauge("device_runtime_status", "Online status", ["serial"], registry=registry)
         status_g.labels(serial=device_id).set(1)
 
@@ -115,7 +106,6 @@ async def message(client, topic, payload, qos, properties):
             lvl_name = metrics_logs_pb2.LogLevel.Name(log.level)
             await send_logs_batch_to_loki(device_id, log, lvl_name)
 
-        # 7. Обновление БД
         with SessionLocal() as db:
             db.query(models.Device).filter(models.Device.serial == device_id).update({
                 "last_sync": datetime.now(timezone.utc)

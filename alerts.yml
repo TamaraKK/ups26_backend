@@ -1,19 +1,15 @@
 groups:
   - name: iot_alerts
     rules:
-      # 1. Аларт на оффлайн (если данных нет более 2 часов)
-      # Используем push_time_seconds, который мы создаем в Pushgateway
       - alert: DeviceOffline
         expr: (time() - push_time_seconds) > 7200
         labels:
           severity: critical
-          # Прокидываем серийник, чтобы бэкенд мог сопоставить с базой
           serial: "{{ $labels.serial }}"
         annotations:
           summary: "Устройство {{ $labels.serial }} не в сети"
           description: "Данные от устройства {{ $labels.serial }} не поступали более 2 часов."
 
-      # 2. Низкий заряд батареи (ниже 10%)
       - alert: LowBattery
         expr: device_battery_level < 10
         for: 5m
