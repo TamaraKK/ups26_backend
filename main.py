@@ -14,8 +14,7 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="IoT Manager API (Hybrid Mode)",
     servers=[
-        {"url": "http://localhost:8000", "description": "Local development server"},
-        {"url": "http://127.0.0.1:8000", "description": "Alternative local server"}
+        {"url": "http://localhost:8000", "description": "Local development server"}
     ],
     root_path=''
 )
