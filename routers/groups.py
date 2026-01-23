@@ -60,7 +60,7 @@ async def get_all_active_alerts(db: Session = Depends(get_db)):
     return enriched_alerts
 
 
-@router.post("/", response_model=schemas.GroupOut)
+@router.post("", response_model=schemas.GroupOut)
 def create_group(group: schemas.GroupCreate, db: Session = Depends(get_db)):
     db_group = models.Group(**group.model_dump())
     db.add(db_group)
@@ -68,7 +68,7 @@ def create_group(group: schemas.GroupCreate, db: Session = Depends(get_db)):
     db.refresh(db_group)
     return db_group
 
-@router.get("/", response_model=List[schemas.GroupOut])
+@router.get("", response_model=List[schemas.GroupOut])
 def list_groups(db: Session = Depends(get_db)):
     return db.query(models.Group).all()
 
