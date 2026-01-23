@@ -50,14 +50,12 @@ class DeviceTypeUpdate(BaseModel):
 # --- Device Schemas ---
 class DeviceCreate(BaseModel):
     serial: str = Field(..., min_length=1, max_length=50)
-    type_id: int
     group_id: Optional[int] = None
     alias: Optional[str] = None
     description: Optional[str] = None
 
 class DeviceUpdate(BaseModel):
     serial: Optional[str] = Field(None, min_length=1, max_length=50)
-    type_id: Optional[int] = None 
     group_id: Optional[int] = Field(None, ge=1)
     alias: Optional[str] = None
     description: Optional[str] = None
@@ -68,9 +66,11 @@ class DeviceOut(BaseModel):
     serial: str
     alias: Optional[str]
     description: Optional[str]
+
     location: Any  
     total_work_time: int = 0
     group_id: Optional[int]
+
     is_online: bool = False # <-- ВАЖНО: Добавили для фронтенда
     
     model_config = ConfigDict(from_attributes=True)

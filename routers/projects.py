@@ -45,8 +45,6 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{project_id}/devices", response_model=List[schemas.DeviceOut])
 def get_project_devices(project_id: int, db: Session = Depends(get_db)):
-    project = db.query(models.DeviceType).filter(models.DeviceType.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    return project.devices
+    devices = db.query(models.Device).join(models.Group).filter(models.Group.project_id == project_id).all()
+    return devices
+

@@ -25,10 +25,6 @@ async def get_online_serials() -> set:
 
 @router.post("", response_model=schemas.DeviceOut)
 def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
-    type_exists = db.query(models.DeviceType).filter(models.DeviceType.id == device.type_id).first()
-    if not type_exists:
-        raise HTTPException(status_code=404, detail="Device Type not found")
-
     if device.group_id:
         group_exists = db.query(models.Group).filter(models.Group.id == device.group_id).first()
         if not group_exists:
