@@ -7,3 +7,8 @@ protobuf
 prometheus-client
 httpx
 psycopg2-binary
+python-telegram-bot
+Jinja2
+paho-mqtt
+schedule
+grpcio-tools

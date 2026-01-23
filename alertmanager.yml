@@ -1,0 +1,15 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 30s
+  repeat_interval: 5m
+  receiver: 'telegram-webhook'
+
+receivers:
+- name: 'telegram-webhook'
+  webhook_configs:
+  - url: 'http://telegram_bot:8080/webhook'
+    send_resolved: true

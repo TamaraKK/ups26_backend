@@ -5,8 +5,8 @@ services:
   web:
     build: .
     container_name: fast_api_app
-    env_file:
-      - .env
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
     ports:
       - "8000:8000"
     dns:
@@ -16,8 +16,10 @@ services:
       - .:/app
     restart: always
     depends_on:
-      - postgres
-      - hivemq
+      postgres:
+        condition: service_healthy
+      hivemq:
+        condition: service_started
     networks:
       - iot_network
 
@@ -38,6 +40,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     ports:
       - "5432:5432"
     volumes:
@@ -75,6 +82,27 @@ services:
     networks:
       - iot_network
 
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    networks:
+      - iot_network
+    command: '--config.file=/etc/alertmanager/alertmanager.yml'
+
+  telegram_bot:
+    build:
+      context: .
+      dockerfile: telegram_bot.Dockerfile
+    container_name: telegram_bot
+    ports:
+      - "8080:8080"
+    networks:
+      - iot_network
+    restart: always
 
 networks:
   iot_network:

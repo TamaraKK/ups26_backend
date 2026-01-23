@@ -17,7 +17,8 @@ scrape_configs:
       - action: labeldrop
         regex: "source"
 
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ['alertmanager:9093']
+# Если в будущем добавишь Alertmanager для рассылки в Телеграм/Почту:
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']

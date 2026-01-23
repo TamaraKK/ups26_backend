@@ -2,7 +2,7 @@ groups:
   - name: iot_alerts
     rules:
       - alert: DeviceOffline
-        expr: (time() - push_time_seconds) > 7200
+        expr: (time() - push_time_seconds) > 20
         labels:
           severity: critical
           serial: "{{ $labels.serial }}"
@@ -12,7 +12,7 @@ groups:
 
       - alert: LowBattery
         expr: device_battery_level < 10
-        for: 5m
+        for: 2m
         labels:
           severity: warning
           serial: "{{ $labels.source }}"
@@ -23,7 +23,7 @@ groups:
       # 3. Перегрев (пример технического алерта)
       # Если температура выше 80 градусов дольше 2 минут
       - alert: DeviceOverheating
-        expr: device_temp > 80
+        expr: device_dryer_temp_now > 10
         for: 2m
         labels:
           severity: critical
