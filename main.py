@@ -43,9 +43,14 @@ async def send_logs_batch_to_loki(source, telemetry_logs):
         return
 
     values = []
-    for log in telemetry_logs:
-        ts_ns = str((log.timestamp.seconds * 10**9) + log.timestamp.nanos)
-        values.append([ts_ns, log.message])
+    # Используем enumerate, чтобы получить индекс i
+    for i, log in enumerate(telemetry_logs):
+        # Добавляем + i к наносекундам, чтобы гарантировать уникальность
+        ts_ns = str((log.timestamp.seconds * 10**9) + log.timestamp.nanos + i)
+        
+        # Хорошо бы добавить уровень лога в текст, раз мы его получаем
+        lvl_name = metrics_logs_pb2.LogLevel.Name(log.level)
+        values.append([ts_ns, f"[{lvl_name}] {log.message}"])
 
     payload = {
         "streams": [{
@@ -55,9 +60,12 @@ async def send_logs_batch_to_loki(source, telemetry_logs):
     }
     async with httpx.AsyncClient() as client:
         try:
-            await client.post(LOKI_URL, json=payload, timeout=2.0)
+            resp = await client.post(LOKI_URL, json=payload, timeout=2.0)
+            if resp.status_code != 204:
+                print(f"Loki Error: {resp.status_code} {resp.text}")
         except Exception as e:
             print(f"Loki Batch Error: {e}")
+
 
 @mqtt_client.on_connect()
 def connect(client, flags, rc, properties):
@@ -101,7 +109,8 @@ async def message(client, topic, payload, qos, properties):
         # 6. Отправка логов в Loki
         for log in telemetry.logs:
             lvl_name = metrics_logs_pb2.LogLevel.Name(log.level)
-            await send_logs_batch_to_loki(device_id, log, lvl_name)
+            # await send_logs_batch_to_loki(device_id, log)
+            await send_logs_batch_to_loki(device_id, telemetry.logs)
 
         with SessionLocal() as db:
             db.query(models.Device).filter(models.Device.serial == device_id).update({
@@ -112,6 +121,15 @@ async def message(client, topic, payload, qos, properties):
         print(f"Done: {device_id} (Processed via Pushgateway)")
     except Exception as e:
         print(f"MQTT Processing Error: {e}")
+
+
+
+
+
+# 10.82.109.205 (/16)
+# 1883
+
+
 
 # @app.get("/metrics")
 # def metrics():

@@ -10,15 +10,35 @@ router = APIRouter(prefix="/devices", tags=["Devices"])
 
 PROMETHEUS_URL = "http://prometheus:9090/api/v1/query"
 
+# async def get_online_serials() -> set:
+#     """Вспомогательная функция: получает набор всех серийников, которые сейчас Online"""
+#     try:
+#         async with httpx.AsyncClient() as client:
+#             # resp = await client.get(PROMETHEUS_URL, params={"query": "device_runtime_status == 1"})
+#             query = 'device_runtime_status == 1 and (time() - push_time_seconds < 300)'
+#             resp = await client.get(PROMETHEUS_URL, params={"query": query})
+#             results = resp.json().get("data", {}).get("result", [])
+#             return {r["metric"]["serial"] for r in results}
+#     except Exception as e:
+#         print(f"Prometheus connection error: {e}")
+#         return set()
+
 async def get_online_serials() -> set:
     """Вспомогательная функция: получает набор всех серийников, которые сейчас Online"""
     try:
         async with httpx.AsyncClient() as client:
-            # resp = await client.get(PROMETHEUS_URL, params={"query": "device_runtime_status == 1"})
-            query = 'device_runtime_status == 1 and (time() - push_time_seconds < 300)'
+            # Исправленный запрос для метрик из Pushgateway
+            query = 'device_runtime_status'
             resp = await client.get(PROMETHEUS_URL, params={"query": query})
             results = resp.json().get("data", {}).get("result", [])
-            return {r["metric"]["serial"] for r in results}
+            
+            online_serials = set()
+            for r in results:
+                # Значение может быть строкой "1" или "0"
+                value = r.get("value", [0, "0"])
+                if len(value) > 1 and value[1] == "1":
+                    online_serials.add(r["metric"].get("serial", ""))
+            return online_serials
     except Exception as e:
         print(f"Prometheus connection error: {e}")
         return set()
@@ -152,6 +172,77 @@ async def get_metric_history(
             raise HTTPException(status_code=500, detail=f"Prometheus error: {e}")
 
 
+# @router.get("/{device_id}/full-report", response_model=schemas.DeviceFullDetailOut)
+# async def get_device_full_report(
+#     device_id: int, 
+#     db: Session = Depends(get_db),
+#     hours: int = Query(3, ge=1)
+# ):
+#     db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
+#     if not db_device:
+#         raise HTTPException(status_code=404, detail="Device not found")
+    
+#     serial = db_device.serial
+
+#     online_serials = await get_online_serials()
+#     db_device.is_online = serial in online_serials
+
+#     end_time = int(time.time())
+#     start_time = end_time - (hours * 3600)
+    
+#     params = {
+#         "query": f'{{source="{serial}"}}',
+#         "start": start_time,
+#         "end": end_time,
+#         "step": "60s"
+#     }
+
+#     metrics_data = []
+#     all_meta = {m.metric_name: m for m in db.query(models.MetricMetadata).all()}
+
+#     async with httpx.AsyncClient() as client:
+#         try:
+#             resp = await client.get("http://prometheus:9090/api/v1/query_range", params=params)
+#             prom_results = resp.json().get("data", {}).get("result", [])
+            
+#             for res in prom_results:
+#                 full_name = res["metric"].get("__name__", "unknown")
+#                 short_name = full_name.replace("device_", "")
+                
+#                 meta = all_meta.get(short_name)
+                
+#                 history = []
+#                 for v in res.get("values", []):
+#                     history.append({
+#                         "time": int(v[0]),
+#                         "value": float(v[1])
+#                     })
+                
+#                 metric_status = "normal"
+#                 if history and meta:
+#                     last_val = history[-1]["value"]
+#                     if (meta.max_threshold and last_val > meta.max_threshold) or \
+#                        (meta.min_threshold and last_val < meta.min_threshold):
+#                         metric_status = "problematic"
+
+#                 metrics_data.append({
+#                     "metric_name": short_name,
+#                     "display_name": meta.display_name_ru if meta else short_name,
+#                     "unit": meta.unit if meta else "",
+#                     "status": metric_status,
+#                     "history": history
+#                 })
+#         except Exception as e:
+#             print(f"Prometheus Bulk Error: {e}")
+
+#     # 4. Логи из Loki
+#     logs_res = await get_device_logs(device_id=device_id, limit=50, hours=hours, db=db)
+
+#     return {
+#         "device_info": db_device,
+#         "metrics": metrics_data,
+#         "logs": logs_res.get("logs", [])
+#     }
 @router.get("/{device_id}/full-report", response_model=schemas.DeviceFullDetailOut)
 async def get_device_full_report(
     device_id: int, 
@@ -170,41 +261,58 @@ async def get_device_full_report(
     end_time = int(time.time())
     start_time = end_time - (hours * 3600)
     
-    params = {
-        "query": f'{{source="{serial}"}}',
-        "start": start_time,
-        "end": end_time,
-        "step": "60s"
-    }
-
     metrics_data = []
     all_meta = {m.metric_name: m for m in db.query(models.MetricMetadata).all()}
 
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.get("http://prometheus:9090/api/v1/query_range", params=params)
-            prom_results = resp.json().get("data", {}).get("result", [])
+            # 1. Получаем список ВСЕХ метрик для устройства
+            metrics_query = f'{{source="{serial}"}}'
+            list_params = {"query": metrics_query, "time": end_time}
             
-            for res in prom_results:
-                full_name = res["metric"].get("__name__", "unknown")
+            list_resp = await client.get("http://prometheus:9090/api/v1/query", params=list_params)
+            available_metrics = list_resp.json().get("data", {}).get("result", [])
+            
+            # 2. Для каждой метрики получаем историю
+            for metric in available_metrics:
+                full_name = metric["metric"].get("__name__", "")
+                if not full_name.startswith("device_"):
+                    continue
+                    
                 short_name = full_name.replace("device_", "")
                 
-                meta = all_meta.get(short_name)
+                # Получаем исторические данные
+                history_params = {
+                    "query": f'{full_name}{{source="{serial}"}}',
+                    "start": start_time,
+                    "end": end_time,
+                    "step": "60s"
+                }
                 
+                history_resp = await client.get("http://prometheus:9090/api/v1/query_range", params=history_params)
+                history_result = history_resp.json().get("data", {}).get("result", [])
+                
+                if not history_result:
+                    continue
+                
+                # Форматируем историю
                 history = []
-                for v in res.get("values", []):
+                for v in history_result[0].get("values", []):
                     history.append({
                         "time": int(v[0]),
                         "value": float(v[1])
                     })
                 
+                # Определяем статус метрики
+                meta = all_meta.get(short_name)
                 metric_status = "normal"
+                
                 if history and meta:
                     last_val = history[-1]["value"]
                     if (meta.max_threshold and last_val > meta.max_threshold) or \
                        (meta.min_threshold and last_val < meta.min_threshold):
                         metric_status = "problematic"
-
+                
                 metrics_data.append({
                     "metric_name": short_name,
                     "display_name": meta.display_name_ru if meta else short_name,
@@ -212,40 +320,86 @@ async def get_device_full_report(
                     "status": metric_status,
                     "history": history
                 })
+                
         except Exception as e:
             print(f"Prometheus Bulk Error: {e}")
+            metrics_data = []
 
-    # 4. Логи из Loki
-    logs_res = await get_device_logs(serial=serial, limit=50, hours=hours)
+    # 3. Логи из Loki
+    logs_data = []
+    try:
+        async with httpx.AsyncClient() as client:
+            end_time_ns = int(time.time() * 10**9)
+            start_time_ns = end_time_ns - (hours * 3600 * 10**9)
+            
+            logs_params = {
+                "query": f'{{source="{serial}"}}',
+                "limit": 50,
+                "start": start_time_ns,
+                "end": end_time_ns,
+                "direction": "backward"
+            }
+            
+            logs_resp = await client.get("http://loki:3100/loki/api/v1/query_range", params=logs_params)
+            logs_result = logs_resp.json().get("data", {}).get("result", [])
+            
+            for stream in logs_result:
+                for value in stream.get("values", []):
+                    ts_ns = int(value[0])
+                    message = value[1]
+                    
+                    ts_iso = datetime.fromtimestamp(ts_ns / 10**9, tz=timezone.utc).isoformat()
+                    
+                    logs_data.append({
+                        "timestamp": ts_iso,
+                        "level": stream.get("stream", {}).get("level", "INFO"),
+                        "message": message
+                    })
+            
+            logs_data.sort(key=lambda x: x["timestamp"], reverse=True)
+    except Exception as e:
+        print(f"Loki connection error: {e}")
 
     return {
         "device_info": db_device,
         "metrics": metrics_data,
-        "logs": logs_res.get("logs", [])
+        "logs": logs_data[:50]
     }
+
 
 
 
 # URL для запросов в Loki (Query)
 LOKI_QUERY_URL = "http://loki:3100/loki/api/v1/query_range"
 
-@router.get("/{serial}/logs", response_model=schemas.DeviceLogsResponse)
+@router.get("/{device_id}/logs", response_model=schemas.DeviceLogsResponse)
 async def get_device_logs(
-    serial: str, 
-    limit: int = Query(50, ge=1, le=1000), # Сколько строк вернуть
-    hours: int = Query(24, ge=1)           # За какой период
+    device_id: int,  
+    # limit: int = Query(50, ge=1, le=1000),
+    limit: int = 50,               # Убираем Query(...) для простоты вызова
+    hours: int = 24,   
+    # hours: int = Query(24, ge=1),
+    db: Session = Depends(get_db) # Добавили сессию для поиска серийника
 ):
-    """Получение логов устройства из Loki"""
-    end_time = int(time.time() * 10**9) # Loki любит наносекунды
+    """Получение логов устройства из Loki по ID устройства"""
+    # db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    # if not db_device:
+    #     raise HTTPException(status_code=404, detail="Device not found")
+    db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if not db_device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    serial = db_device.serial
+    
+    end_time = int(time.time() * 10**9)
     start_time = end_time - (hours * 3600 * 10**9)
 
-    # Формируем LogQL запрос: ищем по лейблу source (который мы слали в main.py)
     params = {
         "query": f'{{source="{serial}"}}',
         "limit": limit,
-        "start": start_time,
-        "end": end_time,
-        "direction": "backward" # Сначала новые
+        # "start": start_time,
+        # "end": end_time,
+        "direction": "backward"
     }
 
     try:
@@ -255,29 +409,27 @@ async def get_device_logs(
             
             output_logs = []
             
-            # Парсим структуру ответа Loki
             for stream in data.get("data", {}).get("result", []):
-                # Извлекаем уровень лога из лейблов, если он там есть
                 level = stream.get("stream", {}).get("level", "INFO")
                 
                 for val in stream.get("values", []):
-                    # val[0] - это наносекунды, val[1] - текст сообщения
-                    ts_ns = int(val[0])
-                    # Конвертируем в читаемое время (ISO)
+                    ts_ns = int(val[0]) # Время
+                    message = val[1]     # Текст
+                    
                     ts_iso = datetime.fromtimestamp(ts_ns / 10**9, tz=timezone.utc).isoformat()
                     
                     output_logs.append({
                         "timestamp": ts_iso,
                         "level": level,
-                        "message": val[1]
+                        "message": message
                     })
 
-            # Сортируем по времени (на случай если было несколько стримов)
             output_logs.sort(key=lambda x: x["timestamp"], reverse=True)
 
             return {
-                "serial": serial,
+                "serial": serial, # Оставляем для инфы в схеме
                 "logs": output_logs
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Loki connection error: {e}")
+        print(f"Loki connection error: {e}")
+        return {"serial": serial, "logs": []}
