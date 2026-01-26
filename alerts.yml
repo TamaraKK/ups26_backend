@@ -5,7 +5,7 @@ groups:
         expr: (time() - push_time_seconds) > 20
         labels:
           severity: critical
-          serial: "{{ $labels.serial }}"
+          # serial: "{{ $labels.serial }}"
         annotations:
           summary: "Устройство {{ $labels.serial }} не в сети"
           description: "Данные от устройства {{ $labels.serial }} не поступали более 2 часов."
@@ -15,10 +15,10 @@ groups:
         for: 2m
         labels:
           severity: warning
-          serial: "{{ $labels.source }}"
+          # serial: "{{ $labels.source }}"
         annotations:
           summary: "Низкий заряд батареи"
-          description: "На устройстве {{ $labels.source }} уровень заряда упал до {{ $value }}%."
+          description: "На устройстве {{ $labels.serial }} уровень заряда упал до {{ $value }}%."
 
       # 3. Перегрев (пример технического алерта)
       # Если температура выше 80 градусов дольше 2 минут
@@ -27,7 +27,7 @@ groups:
         for: 2m
         labels:
           severity: critical
-          serial: "{{ $labels.source }}"
+          # serial: "{{ $labels.source }}"
         annotations:
           summary: "Перегрев устройства"
-          description: "Температура на {{ $labels.source }} поднялась до {{ $value }}°C."
+          description: "Температура на {{ $labels.serial }} поднялась до {{ $value }}°C."

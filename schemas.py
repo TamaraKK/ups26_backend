@@ -6,26 +6,24 @@ from enum import Enum
 OFFLINE_TIMEOUT = 3600 
 
 # --- Enums ---
-class GroupTypeEnum(str, Enum):
-    geolocation = 'geolocation'
-    custom = 'custom'
-    geo = 'geo'
+
+class DeviceStatusEnum(str, Enum):
+    OFFLINE = "off"
+    ONLINE = "on"
+    PROBLEMATIC = "problematic"
 
 # --- Group Schemas ---
 class GroupCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    type: GroupTypeEnum
 
     project_id: Optional[int] = None 
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    type: Optional[GroupTypeEnum] = None
 
 class GroupOut(BaseModel):
     id: int
     name: str
-    type: GroupTypeEnum
     project_id: Optional[int]
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,22 +41,20 @@ class ProjectOut(BaseModel):
 class DeviceCreate(BaseModel):
     serial: str = Field(..., min_length=1, max_length=50)
     group_id: Optional[int] = None
-    alias: Optional[str] = None
     description: Optional[str] = None
     notes: Optional[str] = None
 
 class DeviceUpdate(BaseModel):
     serial: Optional[str] = Field(None, min_length=1, max_length=50)
     group_id: Optional[int] = Field(None, ge=1)
-    alias: Optional[str] = None
     description: Optional[str] = None
     location: Any = None 
     notes: Optional[str] = None
+    
 
 class DeviceOut(BaseModel):
     id: int
     serial: str
-    alias: Optional[str]
     description: Optional[str]
     notes: Optional[str] = None
 
@@ -66,7 +62,7 @@ class DeviceOut(BaseModel):
     total_work_time: int = 0
     group_id: Optional[int]
 
-    is_online: bool = False # <-- ВАЖНО: Добавили для фронтенда
+    status: DeviceStatusEnum
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -161,7 +157,7 @@ class ActiveAlert(BaseModel):
 
 class DeviceAlerts(BaseModel):
     serial: str
-    alias: Optional[str]
+    # alias: Optional[str]
     alerts: List[ActiveAlert]
 
 class GroupedAlertsOut(BaseModel):
@@ -176,18 +172,12 @@ class AlertWithMetadata(BaseModel):
     active_at: str
 
     serial: str
-    device_alias: Optional[str] = None
-    group_name: str = "Без группы"
 
-# --- Detail Schemas ---
-# class GroupDetail(GroupOut):
-#     devices: List[DeviceOut] = []
 class GroupDetail(BaseModel):
     id: int
     name: str
-    type: str
     project_id: int
-    devices: List[DeviceOut]  # DeviceOut уже содержит is_online
+    devices: List[DeviceOut]  
     
     model_config = ConfigDict(from_attributes=True)
     

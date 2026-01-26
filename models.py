@@ -9,11 +9,6 @@ class Point(UserDefinedType):
     def get_col_spec(self):
         return 'POINT'
 
-class GroupTypeEnum(enum.Enum):
-    geolocation = 'geolocation'
-    custom = 'custom'
-    geo = 'geo' 
-
 class Device(Base):
     __tablename__ = 'devices'
 
@@ -22,7 +17,6 @@ class Device(Base):
     total_work_time = Column(Integer, default=0, server_default="0")
 
     location = Column(Point, nullable=True)  # ???
-    alias = Column(String)             # например "сушилка в цеху №1"
     description = Column(String)       # например "обслуживается по понедельникам"
     last_sync = Column(DateTime, nullable=True)
 
@@ -31,8 +25,6 @@ class Device(Base):
     # TODO: user / org
     group_id = Column(Integer, ForeignKey('groups.id'), nullable=True)
     group = relationship("Group", back_populates="devices")
-
-
 
 class MetricMetadata(Base):
     __tablename__ = 'metric_metadata'
@@ -61,7 +53,6 @@ class Group(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    type = Column(Enum(GroupTypeEnum), default=GroupTypeEnum.custom)
     
     project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
     project = relationship("Project", back_populates="groups")

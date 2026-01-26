@@ -3,44 +3,80 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
+from routers.projects import get_all_active_alerts
 import models, schemas, httpx
 from utils.dependencies import get_db
+from schemas import DeviceStatusEnum
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
 
+PROMETHEUS_ALERTS_URL = "http://prometheus:9090/api/v1/alerts"
 PROMETHEUS_URL = "http://prometheus:9090/api/v1/query"
 
-async def get_online_serials() -> set:
+# async def get_online_serials() -> set:
+#     try:
+#         async with httpx.AsyncClient() as client:
+#             query = 'device_runtime_status'
+#             resp = await client.get(PROMETHEUS_URL, params={"query": query}, timeout=3.0)
+            
+#             if resp.status_code != 200:
+#                 return set()
+
+#             data = resp.json()
+#             results = data.get("data", {}).get("result", [])
+            
+#             online_serials = set()
+#             for r in results:
+#                 metric_labels = r.get("metric", {})
+#                 s = metric_labels.get("serial")
+#                 if not s:
+#                     continue
+                
+#                 value_list = r.get("value", [])
+#                 if len(value_list) > 1 and str(value_list[1]) == "1":
+#                     online_serials.add(s)
+            
+#             print(f"DEBUG: Found online serials: {online_serials}") # Проверим, что находит
+#             return online_serials
+            
+#     except Exception as e:
+#         print(f"DEBUG: get_online_serials error: {e}")
+#         return set()
+async def get_online_serials() -> dict[str, str]:
     try:
         async with httpx.AsyncClient() as client:
-            query = 'device_runtime_status'
-            resp = await client.get(PROMETHEUS_URL, params={"query": query}, timeout=3.0)
-            
-            if resp.status_code != 200:
-                return set()
+            # Запрос всех метрик за последние 2 минуты, чтобы увидеть отсутствующие
+            query = 'absent_over_time(device_runtime_status[2m])'
+            resp = await client.get(PROMETHEUS_URL, params={"query": query}, timeout=5.0)
+
+            if resp.status_code != 200: return {}
 
             data = resp.json()
             results = data.get("data", {}).get("result", [])
             
-            online_serials = set()
+            statuses = {}
+            # Сначала считаем всех офлайн/проблемными, для которых нашлась метрика absent=1
             for r in results:
-                metric_labels = r.get("metric", {})
-                s = metric_labels.get("serial")
-                if not s:
-                    continue
-                
-                # Prometheus возвращает значение в ключе "value", который является списком [ts, "val"]
-                value_list = r.get("value", [])
-                if len(value_list) > 1 and str(value_list[1]) == "1":
-                    online_serials.add(s)
+                s = r.get("metric", {}).get("serial")
+                if s:
+                    statuses[s] = "офлайн" # Или "проблемный"
+
+            # Теперь добавляем тех, кто онлайн (ваша старая логика)
+            query_online = 'device_runtime_status == 1'
+            resp_online = await client.get(PROMETHEUS_URL, params={"query": query_online}, timeout=5.0)
             
-            print(f"DEBUG: Found online serials: {online_serials}") # Проверим, что находит
-            return online_serials
+            if resp_online.status_code == 200:
+                results_online = resp_online.json().get("data", {}).get("result", [])
+                for r_o in results_online:
+                    s_o = r_o.get("metric", {}).get("serial")
+                    if s_o:
+                        statuses[s_o] = "онлайн"
+
+            return statuses
             
     except Exception as e:
-        print(f"DEBUG: get_online_serials error: {e}")
-        return set()
-
+        print(f"DEBUG: get_device_statuses error: {e}")
+        return {}
 
 
 @router.post("", response_model=schemas.DeviceOut)
@@ -54,8 +90,7 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
     db.add(db_device)
     db.commit()
     db.refresh(db_device)
-    # По умолчанию новый девайс онлайн
-    db_device.is_online = True
+    db_device.status = DeviceStatusEnum.OFFLINE
     return db_device
 
 @router.get("", response_model=List[schemas.DeviceOut])
@@ -65,21 +100,12 @@ async def list_devices(db: Session = Depends(get_db)):
     online_serials = await get_online_serials()
 
     for dev in db_devices:
-        dev.is_online = dev.serial in online_serials
+        if dev.serial in online_serials:
+            dev.status = schemas.DeviceStatusEnum.ONLINE
+        else:
+            dev.status = schemas.DeviceStatusEnum.OFFLINE
         
     return db_devices
-
-@router.get("/stats", response_model=schemas.DeviceStats)
-async def get_device_stats(db: Session = Depends(get_db)):
-    total_count = db.query(models.Device).count()
-    online_serials = await get_online_serials()
-    online_count = len(online_serials)
-            
-    return {
-        "total": total_count,
-        "online": online_count,
-        "offline": max(0, total_count - online_count)
-    }
 
 @router.get("/{device_id}", response_model=schemas.DeviceOut)
 async def get_device(device_id: int, db: Session = Depends(get_db)):
@@ -88,7 +114,10 @@ async def get_device(device_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Device not found")
     
     online_serials = await get_online_serials()
-    db_device.is_online = db_device.serial in online_serials
+    if db_device.serial in online_serials:
+            db_device.status = schemas.DeviceStatusEnum.ONLINE
+    else:
+        db_device.status = schemas.DeviceStatusEnum.OFFLINE
     return db_device
 
 @router.patch("/{device_id}", response_model=schemas.DeviceOut)
@@ -109,9 +138,11 @@ async def update_device(device_id: int, device_update: schemas.DeviceUpdate, db:
     db.commit()
     db.refresh(db_device)
     
-    # Обновляем статус после патча для корректного ответа
     online_serials = await get_online_serials()
-    db_device.is_online = db_device.serial in online_serials
+    if db_device.serial in online_serials:
+            db_device.status = schemas.DeviceStatusEnum.ONLINE
+    else:
+        db_device.status = schemas.DeviceStatusEnum.OFFLINE
     return db_device
 
 @router.delete("/{device_id}")
@@ -131,7 +162,6 @@ async def get_metric_history(
     hours: int = Query(3, ge=1, le=24),
     db: Session = Depends(get_db)
 ):
-    # 1. Ищем метаданные в базе (красивое имя и единицы измерения)
     meta = db.query(models.MetricMetadata).filter(
         models.MetricMetadata.metric_name == metric_name
     ).first()
@@ -185,17 +215,19 @@ async def get_device_full_report(
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
     
-    # Теперь мы уверены, что serial существует
     serial = db_device.serial
-    print(f"DEBUG: Processing report for device_id={device_id}, serial={serial}")
+    current_status = DeviceStatusEnum.OFFLINE
+    online_serials = await get_online_serials()
 
-    # Проверка онлайна
-    try:
-        online_serials = await get_online_serials()
-        db_device.is_online = serial in online_serials
-    except Exception as e:
-        print(f"Error checking online status: {e}")
-        db_device.is_online = False
+    if serial in online_serials:
+
+        current_status = DeviceStatusEnum.ONLINE
+        
+        all_active_alerts = await get_all_active_alerts(db)
+        device_has_alerts = any(alert['serial'] == serial for alert in all_active_alerts)
+        
+        if device_has_alerts:
+             current_status = DeviceStatusEnum.PROBLEMATIC
 
     end_time = int(time.time())
     start_time = end_time - (hours * 3600)
@@ -206,7 +238,6 @@ async def get_device_full_report(
     async with httpx.AsyncClient() as client:
         # 2. МЕТРИКИ (Prometheus)
         try:
-            # Используем {serial=...} так как в конфиге прописан релелбинг
             metrics_query = f'{{serial="{serial}"}}'
             list_resp = await client.get(
                 "http://prometheus:9090/api/v1/query", 
@@ -298,7 +329,10 @@ async def get_device_full_report(
             print(f"Loki connection error for serial {serial}: {e}")
 
     return {
-        "device_info": db_device,
+        "device_info": {
+             **db_device.__dict__, # Распаковываем объект SQLAlchemy
+             "status": current_status, 
+        },
         "metrics": metrics_data,
         "logs": logs_data[:50]
     }
@@ -312,16 +346,10 @@ LOKI_QUERY_URL = "http://loki:3100/loki/api/v1/query_range"
 @router.get("/{device_id}/logs", response_model=schemas.DeviceLogsResponse)
 async def get_device_logs(
     device_id: int,  
-    # limit: int = Query(50, ge=1, le=1000),
-    limit: int = 50,               # Убираем Query(...) для простоты вызова
+    limit: int = 50,              
     hours: int = 24,   
-    # hours: int = Query(24, ge=1),
-    db: Session = Depends(get_db) # Добавили сессию для поиска серийника
+    db: Session = Depends(get_db) 
 ):
-    """Получение логов устройства из Loki по ID устройства"""
-    # db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
-    # if not db_device:
-    #     raise HTTPException(status_code=404, detail="Device not found")
     db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -334,8 +362,6 @@ async def get_device_logs(
     params = {
         "query": f'{{serial="{serial}"}}',
         "limit": limit,
-        # "start": start_time,
-        # "end": end_time,
         "direction": "backward"
     }
 
