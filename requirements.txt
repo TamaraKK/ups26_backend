@@ -12,3 +12,4 @@ Jinja2
 paho-mqtt
 schedule
 grpcio-tools
+esp_coredump

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-import metrics_logs_pb2
+import telemetry_pb2
 from fastapi_mqtt import FastMQTT, MQTTConfig
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway, generate_latest
 import httpx
@@ -8,6 +8,10 @@ import time
 from datetime import datetime, timezone
 import models
 from database import engine, SessionLocal
+import tempfile
+from sqlalchemy import update
+from utils.coredump import CoreDumpDecoder
+import json
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -47,7 +51,7 @@ async def send_logs_batch_to_loki(source_value, telemetry_logs):
     
     # Безопасно получаем карту уровней
     try:
-        level_names = {v: k for k, v in metrics_logs_pb2.LogLevel.items()}
+        level_names = {v: k for k, v in telemetry_pb2.LogLevel.items()}
     except Exception:
         level_names = {}
 
@@ -98,45 +102,112 @@ def connect(client, flags, rc, properties):
 async def message(client, topic, payload, qos, properties):
     try:
         # 1. Распаковка Protobuf
-        telemetry = metrics_logs_pb2.IoTDeviceTelemetry()
+        telemetry = telemetry_pb2.IoTDeviceTelemetry()
         telemetry.ParseFromString(payload)
-        device_id = telemetry.info.device_id or "unknown"
+        device_serial = telemetry.info.device_id or "unknown"
 
         registry = CollectorRegistry()
         
         status_g = Gauge("device_runtime_status", "Online status", ["serial"], registry=registry)
-        status_g.labels(serial=device_id).set(1)
+        status_g.labels(serial=device_serial).set(1)
 
         # 3. Динамические метрики (из fake.py прилетят cpu_usage и ram_usage)
         for m in telemetry.metrics:
             g = Gauge(f"device_{m.name.replace('.', '_')}", f"Metric: {m.name}", ["source"], registry=registry)
-            g.labels(source=device_id).set(m.value)
+            g.labels(source=device_serial).set(m.value)
 
         # 4. Состояние устройства
         if telemetry.state:
             bat = Gauge("device_battery_level", "Battery level", ["source"], registry=registry)
-            bat.labels(source=device_id).set(telemetry.state.battery_level)
+            bat.labels(source=device_serial).set(telemetry.state.battery_level)
             
             sig = Gauge("device_signal_strength", "Signal strength", ["source"], registry=registry)
-            sig.labels(source=device_id).set(telemetry.state.signal_strength)
+            sig.labels(source=device_serial).set(telemetry.state.signal_strength)
 
         try:
             push_to_gateway(
                 PUSHGATEWAY_URL, 
                 job="telemetry_processor", # Фиксированное имя job
                 registry=registry,
-                grouping_key={'serial': device_id} # ID устройства передаем сюда
+                grouping_key={'serial': device_serial} # ID устройства передаем сюда
             )
         except Exception as e:
             print(f"Pushgateway Error: {e}")    
 
         # 6. Отправка логов в Loki
         for log in telemetry.logs:
-            lvl_name = metrics_logs_pb2.LogLevel.Name(log.level)
-            await send_logs_batch_to_loki(device_id, telemetry.logs)
+            lvl_name = telemetry_pb2.LogLevel.Name(log.level)
+            # await send_logs_batch_to_loki(device_serial, telemetry.logs)
+
+
+        if telemetry.coredump:
+
+            
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.b64', delete=False) as tmp:
+                tmp.write(telemetry.coredump)
+                temp_core_path = tmp.name
+                
+            try:
+                decoder = CoreDumpDecoder(prog="utils/esp32.elf", core=temp_core_path)
+                coredump = decoder.info_corefile()
+
+                type_mapping = {
+                    'abort': models.IssueTypeEnum.abort,
+                    'assert': models.IssueTypeEnum.assertion,
+                    'watchdog': models.IssueTypeEnum.watchdog
+                }
+                coredump_type = type_mapping.get(coredump.get("type", "").lower())
+
+                
+                with SessionLocal() as db:
+                    
+                    device = db.query(models.Device).filter(models.Device.serial == device_serial)
+                    if not device:
+                        print(f"Device {device_serial} not found")
+                        return
+
+                    issue = db.query(models.Issue).filter(
+                        models.Issue.name == coredump["reason"]
+                    ).first()
+
+                    if not issue:
+                        issue = models.Issue(
+                            name=coredump["reason"],
+                            type=coredump_type,
+                            data=json.dumps(coredump)
+                        )
+                        db.add(issue)
+                        db.flush()
+
+                    if device in issue.devices:
+                                                
+                        stmt = update(models.IssueDevice).where(
+                            (models.IssueDevice.c.issue_id == issue.id) &
+                            (models.IssueDevice.c.device_id == device.id)
+                        ).values(
+                            occurrence_count=models.IssueDevice.c.occurrence_count + 1,
+                            last_occurrence=datetime.now()
+                        )
+                        db.execute(stmt)
+
+                    else:
+                        stmt = models.IssueDevice.insert().values(
+                            issue_id=issue.id,
+                            device_id=device.id,
+                            occurrence_count=1,
+                            first_occurrence=datetime.now(),
+                            last_occurrence=datetime.now()
+                        )
+                        db.execute(stmt)
+
+                        
+                    db.commit()
+                    
+            except Exception as e:
+                print(f"Error processing coredump: {e}")
 
         with SessionLocal() as db:
-            db.query(models.Device).filter(models.Device.serial == device_id).update({
+            db.query(models.Device).filter(models.Device.serial == device_serial).update({
                 "last_sync": datetime.now(timezone.utc)
             })
             db.commit()

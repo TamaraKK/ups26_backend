@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package iot.telemetry.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message Value {
+  oneof value {
+    double float_val = 1;
+    int64 int_val = 2;
+    bool bool_val = 3;
+    string string_val = 4;
+    google.protobuf.Timestamp time_val = 5;
+  }
+}
+
+message KeyValue {
+  string key = 1;
+  Value val = 2;
+}
+
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  INFO = 1;
+  WARN = 2;
+  ERROR = 3;
+  FATAL = 4;
+}
+
+message LogEntry {
+  LogLevel level = 1;
+  string message = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  repeated KeyValue attributes = 4;
+}
+
+enum MetricType {
+  METRIC_TYPE_UNSPECIFIED = 0;
+  GAUGE = 1;        
+  COUNTER = 2;      
+  HISTOGRAM = 3;    
+  SUMMARY = 4;      
+}
+
+message Metric {
+  string name = 1;
+  MetricType type = 2;
+  repeated KeyValue attributes = 3;
+  double value = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+message Event {
+  string name = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  repeated KeyValue details = 3;
+}
+
+message DeviceState {
+  double battery_level = 2;    
+  double signal_strength = 3;  
+  repeated KeyValue extra = 4;
+}
+
+message DeviceInfo {
+  string device_id = 1;
+  string firmware_version = 2;
+  string hardware_model = 3;
+  repeated KeyValue metadata = 4;
+}
+
+message IoTDeviceTelemetry {
+  DeviceInfo info = 1;
+  DeviceState state = 2;
+  repeated LogEntry logs = 3;
+  repeated Metric metrics = 4;
+  repeated Event events = 5;
+  bytes coredump = 6;  
+}

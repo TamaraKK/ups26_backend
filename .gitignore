@@ -35,3 +35,6 @@ Thumbs.db
 
 # model
 model
+
+utils/coredump.b64
+utils/esp32.elf
