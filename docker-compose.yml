@@ -52,6 +52,18 @@ services:
     networks:
       - iot_network
 
+  # DB ui
+
+  adminer:
+        image: adminer
+        restart: always
+        ports:
+          - "8080:8080"
+        networks:
+          - iot_network
+              
+        
+
   # Сбор метрик (Prometheus)
   prometheus:
     image: prom/prometheus:latest
@@ -93,16 +105,16 @@ services:
       - iot_network
     command: '--config.file=/etc/alertmanager/alertmanager.yml'
 
-  telegram_bot:
-    build:
-      context: .
-      dockerfile: telegram_bot.Dockerfile
-    container_name: telegram_bot
-    ports:
-      - "8080:8080"
-    networks:
-      - iot_network
-    restart: always
+  # telegram_bot:
+  #   build:
+  #     context: .
+  #     dockerfile: telegram_bot.Dockerfile
+  #   container_name: telegram_bot
+  #   ports:
+  #     - "8080:8080"
+  #   networks:
+  #     - iot_network
+  #   restart: always
 
 networks:
   iot_network:
@@ -110,3 +122,4 @@ networks:
 
 volumes:
   pg_data:
+  
