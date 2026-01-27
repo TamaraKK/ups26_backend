@@ -15,16 +15,14 @@ class IssueTypeEnum(enum.Enum):
     assertion = 'assert'
     watchdog = 'watchdog'
 
-# Define the association table BEFORE the classes that reference it
 IssueDevice = Table(
     'issue_device',
     Base.metadata,
-    Column('issue_id', Integer, ForeignKey('issues.id'), primary_key=True),
-    Column('device_id', Integer, ForeignKey('devices.id'), primary_key=True),
-    Column('occurrence_count', Integer, default=1, nullable=False), 
-    Column('first_occurrence', DateTime, default=datetime.now), 
-    Column('last_occurrence', DateTime, default=datetime.now, 
-           onupdate=datetime.now), 
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('issue_id', Integer, ForeignKey('issues.id')),
+    Column('device_id', Integer, ForeignKey('devices.id')),
+    Column('core_dump', JSON),
+    Column('occurrence', DateTime, default=datetime.now),
 )
 
 class MetricMetadata(Base):
@@ -84,8 +82,7 @@ class Issue(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True) 
-    data = Column(JSON)
+    
     type = Column(Enum(IssueTypeEnum))
     
-    # Use string reference 'Device' (already defined)
     devices = relationship('Device', secondary=IssueDevice, back_populates='issues')

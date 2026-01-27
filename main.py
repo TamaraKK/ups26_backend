@@ -135,33 +135,34 @@ async def message(client, topic, payload, qos, properties):
             print(f"Pushgateway Error: {e}")    
 
         # 6. Отправка логов в Loki
-        for log in telemetry.logs:
-            lvl_name = telemetry_pb2.LogLevel.Name(log.level)
-            # await send_logs_batch_to_loki(device_serial, telemetry.logs)
+        if telemetry.logs:
+            await send_logs_batch_to_loki(device_serial, telemetry.logs)
+  
 
 
         if telemetry.coredump:
 
-            
             with tempfile.NamedTemporaryFile(mode='wb', suffix='.b64', delete=False) as tmp:
                 tmp.write(telemetry.coredump)
                 temp_core_path = tmp.name
                 
-            try:
+            
                 decoder = CoreDumpDecoder(prog="utils/esp32.elf", core=temp_core_path)
                 coredump = decoder.info_corefile()
 
+                
                 type_mapping = {
                     'abort': models.IssueTypeEnum.abort,
                     'assert': models.IssueTypeEnum.assertion,
                     'watchdog': models.IssueTypeEnum.watchdog
                 }
+                
                 coredump_type = type_mapping.get(coredump.get("type", "").lower())
 
-                
                 with SessionLocal() as db:
                     
-                    device = db.query(models.Device).filter(models.Device.serial == device_serial)
+                    device = db.query(models.Device).filter(models.Device.serial == device_serial).first()
+    
                     if not device:
                         print(f"Device {device_serial} not found")
                         return
@@ -174,37 +175,23 @@ async def message(client, topic, payload, qos, properties):
                         issue = models.Issue(
                             name=coredump["reason"],
                             type=coredump_type,
-                            data=json.dumps(coredump)
+                            
                         )
                         db.add(issue)
                         db.flush()
 
-                    if device in issue.devices:
-                                                
-                        stmt = update(models.IssueDevice).where(
-                            (models.IssueDevice.c.issue_id == issue.id) &
-                            (models.IssueDevice.c.device_id == device.id)
-                        ).values(
-                            occurrence_count=models.IssueDevice.c.occurrence_count + 1,
-                            last_occurrence=datetime.now()
-                        )
-                        db.execute(stmt)
+                    stmt = models.IssueDevice.insert().values(
 
-                    else:
-                        stmt = models.IssueDevice.insert().values(
-                            issue_id=issue.id,
-                            device_id=device.id,
-                            occurrence_count=1,
-                            first_occurrence=datetime.now(),
-                            last_occurrence=datetime.now()
-                        )
-                        db.execute(stmt)
+                        issue_id=issue.id,
+                        device_id=device.id,
+                        core_dump=json.dumps(coredump),
+                        occurrence=datetime.now(),)
+                    
+                    db.execute(stmt)
 
-                        
                     db.commit()
                     
-            except Exception as e:
-                print(f"Error processing coredump: {e}")
+            
 
         with SessionLocal() as db:
             db.query(models.Device).filter(models.Device.serial == device_serial).update({

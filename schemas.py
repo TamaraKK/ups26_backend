@@ -1,6 +1,9 @@
+from models import IssueTypeEnum
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List, Any
 from enum import Enum
+from datetime import datetime
+
 
 # --- Константы ---
 OFFLINE_TIMEOUT = 3600 
@@ -37,6 +40,27 @@ class ProjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class IssuePreview(BaseModel):
+    id: int
+    name: str
+    type: IssueTypeEnum
+    occurrence: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class IssueFull(BaseModel):
+    id: int
+    name: str
+    type: IssueTypeEnum
+    data: Optional[dict] = None  # Full coredump data
+    first_occurrence: Optional[datetime] = None
+    last_occurrence: Optional[datetime] = None
+    occurrence_count: int = 1
+    created_at: Optional[datetime] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
 # --- Device Schemas ---
 class DeviceCreate(BaseModel):
     serial: str = Field(..., min_length=1, max_length=50)
@@ -50,7 +74,6 @@ class DeviceUpdate(BaseModel):
     description: Optional[str] = None
     location: Any = None 
     notes: Optional[str] = None
-    
 
 class DeviceOut(BaseModel):
     id: int
@@ -61,7 +84,7 @@ class DeviceOut(BaseModel):
     location: Any  
     total_work_time: int = 0
     group_id: Optional[int]
-
+    
     status: DeviceStatusEnum
     
     model_config = ConfigDict(from_attributes=True)
@@ -146,6 +169,8 @@ class DeviceFullDetailOut(BaseModel):
     metrics: List[MetricHistoryOut] 
     # Данные из Loki
     logs: List[DeviceLogOut]
+
+    issues: List[IssuePreview]
 
 
 class ActiveAlert(BaseModel):

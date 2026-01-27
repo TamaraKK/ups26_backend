@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from typing import List
 from routers.projects import get_all_active_alerts
 import models, schemas, httpx
@@ -236,7 +236,7 @@ async def get_device_full_report(
     all_meta = {m.metric_name: m for m in db.query(models.MetricMetadata).all()}
 
     async with httpx.AsyncClient() as client:
-        # 2. МЕТРИКИ (Prometheus)
+        
         try:
             metrics_query = f'{{serial="{serial}"}}'
             list_resp = await client.get(
@@ -328,17 +328,35 @@ async def get_device_full_report(
         except Exception as e:
             print(f"Loki connection error for serial {serial}: {e}")
 
+        
+    
+    issues_data = db.query(
+        models.Issue,
+        models.IssueDevice.c.occurrence  # Get occurrence from association
+    ).join(
+        models.IssueDevice,
+        models.Issue.id == models.IssueDevice.c.issue_id
+    ).filter(
+        models.IssueDevice.c.device_id == device_id
+    ).all()
+    
+    issues_list = []
+    for issue, occurrence in issues_data:
+        issues_list.append({
+            "id": issue.id,
+            "name": issue.name,
+            "type": issue.type,
+            "occurrence": occurrence, 
+        })
+
     return {
         "device_info": {
              **db_device.__dict__, # Распаковываем объект SQLAlchemy
              "status": current_status, 
         },
         "metrics": metrics_data,
-        "logs": logs_data[:50]
-    }
-
-
-
+        "logs": logs_data[:50],
+        "issues": issues_list,}
 
 # URL для запросов в Loki (Query)
 LOKI_QUERY_URL = "http://loki:3100/loki/api/v1/query_range"
