@@ -5,6 +5,8 @@ from typing import Optional, List, Any, Dict
 from enum import Enum
 from datetime import datetime
 
+from utils import coredump
+
 
 # --- Константы ---
 OFFLINE_TIMEOUT = 3600 
@@ -58,7 +60,7 @@ class TracePreview(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class TraceFull(TracePreview):
-    occurrence: datetime
+    core_dump: Json
  
 
 

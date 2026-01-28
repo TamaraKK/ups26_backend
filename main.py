@@ -29,13 +29,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routers import groups, devices, issues, projects, metadata, issues
+from routers import groups, devices, issues, projects, metadata, issues, traces
 from model import model
 app.include_router(groups.router)
 app.include_router(devices.router)
 app.include_router(projects.router)
 app.include_router(issues.router)
 app.include_router(metadata.router)
+app.include_router(traces.router)
 app.include_router(model.router)
 
 mqtt_config = MQTTConfig(host="hivemq_broker", port=1883)

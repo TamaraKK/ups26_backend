@@ -18,11 +18,11 @@ async def list(db: Session = Depends(get_db)):
         models.Trace,
         models.Issue.id == models.Trace.issue_id
     ).group_by(
-        models.Issue.id,  # Group by issue to get one row per issue
+        models.Issue.id, 
         models.Issue.name,
         models.Issue.type
     ).order_by(
-        desc(func.max(models.Trace.occurrence))  # Order by latest occurrence
+        desc(func.max(models.Trace.occurrence)) 
     ).all()
     
     issues_list = []
@@ -36,7 +36,7 @@ async def list(db: Session = Depends(get_db)):
 
 
 @router.get("/{issue_id}", response_model=schemas.IssueFull)
-async def get_issue_with_traces(
+async def info(
     issue_id: int,
     db: Session = Depends(get_db),):
     
