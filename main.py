@@ -30,6 +30,7 @@ app.add_middleware(
 )
 
 from routers import groups, devices, issues, projects, metadata, issues
+from model import model
 app.include_router(groups.router)
 app.include_router(devices.router)
 app.include_router(projects.router)
