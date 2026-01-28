@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 import models
 from utils.dependencies import get_db
 import httpx
-
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import numpy as np
 router = APIRouter(prefix="/model", tags=["Model"])
 
 
@@ -53,6 +54,16 @@ async def get_device_anomalies(device_id: int, metric: str = "device_cpu_usage",
     report = get_device_diagnostics(df['value'])
     return report
 
+@router.get('/get_prediction_report')
+async def get_prediction_report(device_id: int, metric: str = "device_cpu_usage", db: Session = Depends(get_db)):
+    df = await get_data_from_db(device_id, db, metric_name=metric, limit_minutes = 150)
+    
+    if df.empty:
+        return {"error": "No data found for this device/metric"}
+    
+    report = model_prediction_report(df['value'])
+    return report
+
 def get_device_diagnostics(df, period=30):
       #stl = STL(df['mcu_internal_temp_celsius'], period=period, robust=True)
       # модель анализирует датафрейм только по одной метрике, например device_cpu_usage, и метрики только числовые.
@@ -61,7 +72,7 @@ def get_device_diagnostics(df, period=30):
 
       res = stl.fit()
 
-      iqr_detector = InterQuartileRangeAD(c=4)
+      iqr_detector = InterQuartileRangeAD(c=2)
       anomalies = iqr_detector.fit_detect(res.resid)
 
       anomaly_timestamps = anomalies[anomalies].index.strftime('%Y-%m-%d %H:%M:%S').tolist()
@@ -75,3 +86,44 @@ def get_device_diagnostics(df, period=30):
             "degradation_value": round(trend_diff, 2),
             "is_degrading": bool(trend_diff > 2.0)
       }
+
+
+def model_prediction_report(series, period=30, forecast_steps=50, threshold=85.0):
+    if len(series) < 2 * period:
+        return {
+            "status": "collecting_data",
+            "message": f"Недостаточно данных. Нужно {2*period}, есть {len(series)}",
+            "minutes_until_failure": -1
+        }
+    try:
+        model = ExponentialSmoothing(
+            series, 
+            trend='add', 
+            seasonal='add', 
+            seasonal_periods=period,
+            damped_trend=True 
+        ).fit()
+
+        forecast = model.forecast(forecast_steps)
+
+        overheat_points = np.where(forecast >= threshold)[0]
+
+        if len(overheat_points) > 0:
+            first_fail_idx = overheat_points[0]
+            minutes_to_fail = int((first_fail_idx + 1) * 2)
+            status = "critical" if minutes_to_fail < 30 else "warning"
+        else:
+            minutes_to_fail = -1 # всё в пределах нормы
+            status = "stable"
+
+        return {
+            "status": status,
+            "minutes_until_failure": minutes_to_fail,
+            "current_value": round(series.iloc[-1], 2),
+            "forecast_max": round(forecast.max(), 2),
+            "threshold": threshold
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+ 
