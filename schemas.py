@@ -1,6 +1,7 @@
 from models import IssueTypeEnum
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Optional, List, Any
+import models
+from pydantic import BaseModel, Field, field_validator, ConfigDict, Json
+from typing import Optional, List, Any, Dict
 from enum import Enum
 from datetime import datetime
 
@@ -48,16 +49,25 @@ class IssuePreview(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
+class TracePreview(BaseModel):
+    id: int
+    device_id: int
+    issue_id: int
+    occurrence: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class TraceFull(TracePreview):
+    occurrence: datetime
+ 
+
+
 class IssueFull(BaseModel):
     id: int
     name: str
     type: IssueTypeEnum
-    data: Optional[dict] = None  # Full coredump data
-    first_occurrence: Optional[datetime] = None
-    last_occurrence: Optional[datetime] = None
-    occurrence_count: int = 1
-    created_at: Optional[datetime] = None
-    
+    traces: List[TracePreview]
+     
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -205,5 +215,10 @@ class GroupDetail(BaseModel):
     devices: List[DeviceOut]  
     
     model_config = ConfigDict(from_attributes=True)
+
+class ModelDeviceAnomalies(BaseModel):
+    status: str
+    anomalies_count: int
+    critical_points: str
     
 GroupDetail.model_rebuild()

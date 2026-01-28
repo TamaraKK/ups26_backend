@@ -15,15 +15,17 @@ class IssueTypeEnum(enum.Enum):
     assertion = 'assert'
     watchdog = 'watchdog'
 
-IssueDevice = Table(
-    'issue_device',
-    Base.metadata,
-    Column('id', Integer, primary_key=True, autoincrement=True),
-    Column('issue_id', Integer, ForeignKey('issues.id')),
-    Column('device_id', Integer, ForeignKey('devices.id')),
-    Column('core_dump', JSON),
-    Column('occurrence', DateTime, default=datetime.now),
-)
+class Trace(Base):
+    __tablename__ = 'traces'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    issue_id = Column(Integer, ForeignKey('issues.id'))
+    device_id = Column(Integer, ForeignKey('devices.id'))
+    core_dump = Column(JSON)
+    occurrence = Column(DateTime, default=datetime.now)
+    
+    issue = relationship("Issue", back_populates="traces")
+    device = relationship("Device", back_populates="traces")
 
 class MetricMetadata(Base):
     __tablename__ = 'metric_metadata'
@@ -58,7 +60,6 @@ class Group(Base):
     
     devices = relationship("Device", back_populates="group")
 
-# Define Device BEFORE Issue since Issue references Device in relationship
 class Device(Base):
     __tablename__ = 'devices'
 
@@ -74,15 +75,31 @@ class Device(Base):
     # Relationships
     group = relationship("Group", back_populates="devices")
     
-    # Use string reference 'Issue' since Issue is not defined yet
-    issues = relationship('Issue', secondary=IssueDevice, back_populates='devices')
+    # Many-to-many with Issue through Trace table
+    issues = relationship(
+        'Issue', 
+        secondary=Trace.__table__, 
+        back_populates='devices',
+        overlaps="traces"  # Add overlaps parameter
+    )
+    
+    # One-to-many to Trace
+    traces = relationship("Trace", back_populates="device")
 
 class Issue(Base):
     __tablename__ = 'issues'
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True) 
-    
     type = Column(Enum(IssueTypeEnum))
     
-    devices = relationship('Device', secondary=IssueDevice, back_populates='issues')
+    # Many-to-many with Device through Trace table
+    devices = relationship(
+        'Device', 
+        secondary=Trace.__table__, 
+        back_populates='issues',
+        overlaps="traces"  # Add overlaps parameter
+    )
+    
+    # One-to-many to Trace
+    traces = relationship("Trace", back_populates="issue")

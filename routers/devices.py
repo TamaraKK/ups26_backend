@@ -332,12 +332,12 @@ async def get_device_full_report(
     
     issues_data = db.query(
         models.Issue,
-        models.IssueDevice.c.occurrence  # Get occurrence from association
+        models.Trace.occurrence
     ).join(
-        models.IssueDevice,
-        models.Issue.id == models.IssueDevice.c.issue_id
+        models.Trace,
+        models.Issue.id == models.Trace.issue_id
     ).filter(
-        models.IssueDevice.c.device_id == device_id
+        models.Trace.device_id == device_id
     ).all()
     
     issues_list = []
@@ -351,7 +351,7 @@ async def get_device_full_report(
 
     return {
         "device_info": {
-             **db_device.__dict__, # Распаковываем объект SQLAlchemy
+             **db_device.__dict__,
              "status": current_status, 
         },
         "metrics": metrics_data,
@@ -394,8 +394,8 @@ async def get_device_logs(
                 level = stream.get("stream", {}).get("level", "INFO")
                 
                 for val in stream.get("values", []):
-                    ts_ns = int(val[0]) # Время
-                    message = val[1]     # Текст
+                    ts_ns = int(val[0]) 
+                    message = val[1] 
                     
                     ts_iso = datetime.fromtimestamp(ts_ns / 10**9, tz=timezone.utc).isoformat()
                     

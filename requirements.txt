@@ -13,3 +13,6 @@ paho-mqtt
 schedule
 grpcio-tools
 esp_coredump
+pandas
+statsmodels
+adtk

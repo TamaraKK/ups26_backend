@@ -29,11 +29,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routers import groups, devices, projects, metadata
+from routers import groups, devices, issues, projects, metadata, issues
 app.include_router(groups.router)
 app.include_router(devices.router)
 app.include_router(projects.router)
+app.include_router(issues.router)
 app.include_router(metadata.router)
+app.include_router(model.router)
 
 mqtt_config = MQTTConfig(host="hivemq_broker", port=1883)
 mqtt_client = FastMQTT(config=mqtt_config)
@@ -180,14 +182,15 @@ async def message(client, topic, payload, qos, properties):
                         db.add(issue)
                         db.flush()
 
-                    stmt = models.IssueDevice.insert().values(
-
+                    new_trace = models.Trace(
                         issue_id=issue.id,
                         device_id=device.id,
                         core_dump=json.dumps(coredump),
-                        occurrence=datetime.now(),)
+                        occurrence=datetime.now()
+                    )
+
+                    db.add(new_trace)
                     
-                    db.execute(stmt)
 
                     db.commit()
                     
