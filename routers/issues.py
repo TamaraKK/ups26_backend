@@ -13,23 +13,26 @@ async def list(db: Session = Depends(get_db)):
     
     issues_data = db.query(
         models.Issue,
-        models.IssueDevice.c.occurrence
+        func.max(models.Trace.occurrence).label('last_occurrence')
     ).join(
-        models.IssueDevice,
-        models.Issue.id == models.IssueDevice.c.issue_id
+        models.Trace,
+        models.Issue.id == models.Trace.issue_id
+    ).group_by(
+        models.Issue.id,  # Group by issue to get one row per issue
+        models.Issue.name,
+        models.Issue.type
+    ).order_by(
+        desc(func.max(models.Trace.occurrence))  # Order by latest occurrence
     ).all()
     
     issues_list = []
-    for issue, occurrence in issues_data:
-        issues_list.append({
-            "id": issue.id,
-            "name": issue.name,
-            "type": issue.type,
-            "occurrence": occurrence, 
-        })
+    for issue, last_occurrence in issues_data:
+        issue.last_occurrence = last_occurrence
     
-    return issues_list
-
+        issues_list.append(issue)
+    
+    return issues_list    
+    
 
 
 @router.get("/{issue_id}", response_model=schemas.IssueFull)
