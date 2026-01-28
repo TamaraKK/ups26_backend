@@ -13,7 +13,9 @@ async def list(db: Session = Depends(get_db)):
     
     issues_data = db.query(
         models.Issue,
-        func.max(models.Trace.occurrence).label('last_occurrence')
+        func.max(models.Trace.occurrence).label('last_occurrence'),
+        func.count(models.Trace.id).label('total_trace_count'),
+        func.count(func.distinct(models.Trace.device_id)).label('unique_device_count')
     ).join(
         models.Trace,
         models.Issue.id == models.Trace.issue_id
@@ -26,13 +28,13 @@ async def list(db: Session = Depends(get_db)):
     ).all()
     
     issues_list = []
-    for issue, last_occurrence in issues_data:
+    for issue, last_occurrence, total_trace_count, unique_device_count in issues_data:
         issue.last_occurrence = last_occurrence
+        issue.device_count = unique_device_count
     
         issues_list.append(issue)
     
     return issues_list    
-    
 
 
 @router.get("/{issue_id}", response_model=schemas.IssueFull)

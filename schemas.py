@@ -48,6 +48,7 @@ class IssuePreview(BaseModel):
     name: str
     type: IssueTypeEnum
     last_occurrence: datetime
+    device_count: int
     
     model_config = ConfigDict(from_attributes=True)
 

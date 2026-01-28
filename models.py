@@ -75,12 +75,12 @@ class Device(Base):
     # Relationships
     group = relationship("Group", back_populates="devices")
     
-    # Many-to-many with Issue through Trace table
+    # Many-to-many with Issue through Trace table - MARK AS VIEWONLY
     issues = relationship(
         'Issue', 
         secondary=Trace.__table__, 
         back_populates='devices',
-        overlaps="traces"  # Add overlaps parameter
+        viewonly=True  # Add viewonly=True
     )
     
     # One-to-many to Trace
@@ -93,12 +93,12 @@ class Issue(Base):
     name = Column(String, unique=True, nullable=False, index=True) 
     type = Column(Enum(IssueTypeEnum))
     
-    # Many-to-many with Device through Trace table
+    # Many-to-many with Device through Trace table - MARK AS VIEWONLY
     devices = relationship(
         'Device', 
         secondary=Trace.__table__, 
         back_populates='issues',
-        overlaps="traces"  # Add overlaps parameter
+        viewonly=True  # Add viewonly=True
     )
     
     # One-to-many to Trace
