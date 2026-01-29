@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, aliased
+from sqlalchemy import desc, select, func
 from typing import List
 from routers.projects import get_all_active_alerts
 import models, schemas, httpx
@@ -328,27 +329,31 @@ async def get_device_full_report(
         except Exception as e:
             print(f"Loki connection error for serial {serial}: {e}")
 
-        
-    
     issues_data = db.query(
-        models.Issue,
-        models.Trace.occurrence
-    ).join(
-        models.Trace,
-        models.Issue.id == models.Trace.issue_id
-    ).filter(
-        models.Trace.device_id == device_id
-    ).all()
+            models.Issue,
+            func.max(models.Trace.occurrence).label('last_occurrence'),
+            func.count(models.Trace.id).label('total_trace_count'),
+            func.count(func.distinct(models.Trace.device_id)).label('unique_device_count')
+        ).join(
+            models.Trace,
+            models.Issue.id == models.Trace.issue_id
+        ).group_by(
+            models.Issue.id, 
+            models.Issue.name,
+            models.Issue.type
+        ).order_by(
+            desc(func.max(models.Trace.occurrence)) 
+        ).filter(
+            models.Trace.device_id == device_id
+        ).all()
     
     issues_list = []
-    for issue, occurrence in issues_data:
-        issues_list.append({
-            "id": issue.id,
-            "name": issue.name,
-            "type": issue.type,
-            "occurrence": occurrence, 
-        })
-
+    for issue, last_occurrence, total_trace_count, unique_device_count in issues_data:
+        issue.last_occurrence = last_occurrence
+        issue.device_count = unique_device_count
+        
+        issues_list.append(issue)
+    
     return {
         "device_info": {
              **db_device.__dict__,
