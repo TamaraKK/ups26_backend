@@ -226,7 +226,7 @@ def main():
             #     break
             
             elapsed = time.time() - start_loop
-            sleep_time = 1.0 - elapsed
+            sleep_time = 15.0 - elapsed
             
             if sleep_time < 0:
                 print(f"\033[93m[WARNING] Loop took {elapsed:.2f}s, which is longer than the 1s interval. Consider reducing NUM_DEVICES or optimizing the code.\033[0m")
