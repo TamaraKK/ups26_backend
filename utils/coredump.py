@@ -115,8 +115,7 @@ class CoreDumpDecoder(CoreDump):
                 }
             thread_list.append(thread_dict)
 
-        threads_info['threads'] = thread_list
-        return threads_info
+        return thread_list
 
 
     def parse_backtrace(self, backtrace_text, is_current_thread=False):
@@ -317,7 +316,7 @@ class CoreDumpDecoder(CoreDump):
 
         self.output['current-thread-registers'] = self.get_current_thread_registers(extra_note, extra_info)
         self.output['current-thread-stack'] = self.get_current_thread_stack(task_info)
-        self.output['threds'] = self.get_threads_info(task_info)
+        self.output['threads'] = self.get_threads_info(task_info)
         self.output['all-memory-regions'] = self.get_all_memory_regions()
 
         if self.print_mem:
