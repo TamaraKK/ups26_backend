@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import models, schemas
 from utils.dependencies import get_db
+from sqlalchemy import desc, select, func
 import httpx
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -139,12 +140,36 @@ async def get_project_dashboard(project_id: int, db: Session = Depends(get_db)):
             "offline": off
         })
 
+    issues_data = db.query(
+        models.Issue,
+        func.max(models.Trace.occurrence).label('last_occurrence'),
+        func.count(models.Trace.id).label('total_trace_count'),
+        func.count(func.distinct(models.Trace.device_id)).label('unique_device_count')
+    ).join(
+        models.Trace,
+        models.Issue.id == models.Trace.issue_id
+    ).group_by(
+        models.Issue.id, 
+        models.Issue.name,
+        models.Issue.type
+    ).order_by(
+        desc(func.max(models.Trace.occurrence)) 
+    ).all()
+    
+    issues_list = []
+    for issue, last_occurrence, total_trace_count, unique_device_count in issues_data:
+        issue.last_occurrence = last_occurrence
+        issue.device_count = unique_device_count
+    
+        issues_list.append(issue)
+
     return {
         "groups_stat": groups_stat,
         "total_stat": {
             "total": total_on + total_off,
             "online": total_on,
             "offline": total_off
-        }
+        },
+        "issues": issues_list
     }
 

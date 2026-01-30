@@ -133,6 +133,7 @@ class GroupAnalytics(BaseModel):
 class ProjectDashboardOut(BaseModel):
     groups_stat: List[GroupAnalytics]
     total_stat: DeviceStats
+    issues: List[IssuePreview]
 
 # метрики и логи
 
