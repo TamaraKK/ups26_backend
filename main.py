@@ -21,23 +21,8 @@ from routers.model_alerts import run_predictive_background_task
 models.Base.metadata.create_all(bind=engine)
 
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    task = asyncio.create_task(run_predictive_background_task(SessionLocal))
-    print("background task: predictive analytics started")
-    
-    yield 
-    
-    task.cancel() 
-    try:
-        await task
-    except asyncio.CancelledError:
-        print("background task: predictive analytics stopped")
-
 app = FastAPI(
-    title="IoT Manager API (Hybrid Mode)",
-    lifespan=lifespan
+    title="IoT Manager API (Hybrid Mode)",   
 )
 
 origins = ["http://localhost:8280", "http://127.0.0.1:8280"]
@@ -216,8 +201,6 @@ async def message(client, topic, payload, qos, properties):
 
                     db.commit()
                     
-            
-
         with SessionLocal() as db:
             db.query(models.Device).filter(models.Device.serial == device_serial).update({
                 "last_sync": datetime.now(timezone.utc)
