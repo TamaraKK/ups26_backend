@@ -6,9 +6,42 @@ from utils.dependencies import get_db
 from sqlalchemy import desc, select, func
 import httpx
 
+
 router = APIRouter(prefix="/projects", tags=["Projects"])
 PROMETHEUS_ALERTS_URL = "http://prometheus:9090/api/v1/alerts"
 PROMETHEUS_URL = "http://prometheus:9090/api/v1/query"
+
+async def get_online_serials() -> set:
+    # Use changes() function to detect if metric was updated recently
+    # changes(device_cpu_usage[5m]) > 0 means it was pushed in last 5 minutes
+    query = 'changes(device_cpu_usage[30s]) > 0'
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                PROMETHEUS_URL,
+                params={"query": query},
+                timeout=5.0
+            )
+            
+            if resp.status_code != 200:
+                return set()
+
+            data = resp.json()
+            results = data.get("data", {}).get("result", [])
+            
+            online_serials = {
+                r["metric"]["serial"] 
+                for r in results 
+                if "serial" in r.get("metric", {})
+            }
+            
+            return online_serials
+    except Exception as e:
+        print(f"Request failed: {e}")
+        return set()
+
+
 
 @router.get("/alerts", response_model=List[schemas.AlertWithMetadata])
 async def get_all_active_alerts(db: Session = Depends(get_db)):
@@ -106,16 +139,18 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{project_id}/dashboard", response_model=schemas.ProjectDashboardOut)
 async def get_project_dashboard(project_id: int, db: Session = Depends(get_db)):
-    online_serials = set()
-    try:
-        # Проверяем тех, кто пушил в последние 5 минут
-        query = 'device_runtime_status == 1 and (time() - push_time_seconds < 300)'
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(PROMETHEUS_URL, params={"query": query})
-            results = resp.json().get("data", {}).get("result", [])
-            online_serials = {r["metric"]["serial"] for r in results}
-    except Exception as e:
-        print(f"Prometheus error: {e}")
+    # online_serials = set()
+    # try:
+    #     # Проверяем тех, кто пушил в последние 5 минут
+    #     query = 'device_runtime_status == 1 and (time() - push_time_seconds < 300)'
+    #     async with httpx.AsyncClient() as client:
+    #         resp = await client.get(PROMETHEUS_URL, params={"query": query})
+    #         results = resp.json().get("data", {}).get("result", [])
+    #         online_serials = {r["metric"]["serial"] for r in results}
+    # except Exception as e:
+    #     print(f"Prometheus error: {e}")
+
+    online_serials = await get_online_serials()
 
     project_groups = db.query(models.Group).filter(models.Group.project_id == project_id).all()
     

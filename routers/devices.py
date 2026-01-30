@@ -43,43 +43,36 @@ PROMETHEUS_URL = "http://prometheus:9090/api/v1/query"
 #     except Exception as e:
 #         print(f"DEBUG: get_online_serials error: {e}")
 #         return set()
-async def get_online_serials() -> dict[str, str]:
+
+async def get_online_serials() -> set:
+    
+    query = 'changes(device_cpu_usage[30s]) > 0'
+    
     try:
         async with httpx.AsyncClient() as client:
-            # Запрос всех метрик за последние 2 минуты, чтобы увидеть отсутствующие
-            query = 'absent_over_time(device_runtime_status[2m])'
-            resp = await client.get(PROMETHEUS_URL, params={"query": query}, timeout=5.0)
-
-            if resp.status_code != 200: return {}
+            resp = await client.get(
+                PROMETHEUS_URL,
+                params={"query": query},
+                timeout=3.0
+            )
+            
+            if resp.status_code != 200:
+                return set()
 
             data = resp.json()
             results = data.get("data", {}).get("result", [])
             
-            statuses = {}
-            # Сначала считаем всех офлайн/проблемными, для которых нашлась метрика absent=1
-            for r in results:
-                s = r.get("metric", {}).get("serial")
-                if s:
-                    statuses[s] = "офлайн" # Или "проблемный"
-
-            # Теперь добавляем тех, кто онлайн (ваша старая логика)
-            query_online = 'device_runtime_status == 1'
-            resp_online = await client.get(PROMETHEUS_URL, params={"query": query_online}, timeout=5.0)
+            online_serials = {
+                r["metric"]["serial"] 
+                for r in results 
+                if "serial" in r.get("metric", {})
+            }
             
-            if resp_online.status_code == 200:
-                results_online = resp_online.json().get("data", {}).get("result", [])
-                for r_o in results_online:
-                    s_o = r_o.get("metric", {}).get("serial")
-                    if s_o:
-                        statuses[s_o] = "онлайн"
-
-            return statuses
-            
+            return online_serials
     except Exception as e:
-        print(f"DEBUG: get_device_statuses error: {e}")
-        return {}
-
-
+        print(f"Request failed: {e}")
+        return set()
+    
 @router.post("", response_model=schemas.DeviceOut)
 def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
     if device.group_id:
