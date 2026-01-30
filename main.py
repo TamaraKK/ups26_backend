@@ -2,7 +2,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 import telemetry_pb2
 from fastapi_mqtt import FastMQTT, MQTTConfig
-from prometheus_client import CollectorRegistry, Gauge, push_to_gateway, generate_latest
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 import httpx
 import time
 from datetime import datetime, timezone
@@ -12,12 +12,32 @@ import tempfile
 from sqlalchemy import update
 from utils.coredump import CoreDumpDecoder
 import json
+import asyncio
+from contextlib import asynccontextmanager
+from routers.model_alerts import run_predictive_background_task
+
+
 
 models.Base.metadata.create_all(bind=engine)
 
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(run_predictive_background_task(SessionLocal))
+    print("background task: predictive analytics started")
+    
+    yield 
+    
+    task.cancel() 
+    try:
+        await task
+    except asyncio.CancelledError:
+        print("background task: predictive analytics stopped")
+
 app = FastAPI(
     title="IoT Manager API (Hybrid Mode)",
-    # root_path=''
+    lifespan=lifespan
 )
 
 origins = ["http://localhost:8280", "http://127.0.0.1:8280"]
@@ -29,7 +49,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routers import groups, devices, issues, projects, metadata, issues, traces
+from routers import groups, devices, issues, projects, metadata, issues, traces, model_alerts
 from model import model
 app.include_router(groups.router)
 app.include_router(devices.router)
@@ -38,6 +58,7 @@ app.include_router(issues.router)
 app.include_router(metadata.router)
 app.include_router(traces.router)
 app.include_router(model.router)
+app.include_router(model_alerts.router)
 
 mqtt_config = MQTTConfig(host="hivemq_broker", port=1883)
 mqtt_client = FastMQTT(config=mqtt_config)
@@ -46,14 +67,13 @@ mqtt_client.init_app(app)
 LOKI_URL = "http://loki:3100/loki/api/v1/push"
 PUSHGATEWAY_URL = "pushgateway:9091"
 
+
 async def send_logs_batch_to_loki(source_value, telemetry_logs):
     if not telemetry_logs:
         return
 
-    # 1. Группируем логи по уровню
     grouped_logs = {}
     
-    # Безопасно получаем карту уровней
     try:
         level_names = {v: k for k, v in telemetry_pb2.LogLevel.items()}
     except Exception:

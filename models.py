@@ -103,3 +103,28 @@ class Issue(Base):
     
     # One-to-many to Trace
     traces = relationship("Trace", back_populates="issue")
+
+
+class PredictiveAlert(Base):
+    __tablename__ = "predictive_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    metric_name = Column(String)
+    status = Column(String) 
+    minutes_to_failure = Column(Integer)
+    forecast_max = Column(Float)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class DeviceTelemetry(Base):
+    __tablename__ = 'device_telemetry'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey('devices.id'), index=True)
+    
+    metric_name = Column(String, index=True) 
+    value = Column(Float)
+    
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+

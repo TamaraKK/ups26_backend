@@ -96,8 +96,10 @@ def model_prediction_report(series, period=30, forecast_steps=50, threshold=85.0
             "minutes_until_failure": -1
         }
     try:
+        smoothed_series = series.ewm(span=5).mean()
+
         model = ExponentialSmoothing(
-            series, 
+            smoothed_series,
             trend='add', 
             seasonal='add', 
             seasonal_periods=period,
@@ -105,7 +107,6 @@ def model_prediction_report(series, period=30, forecast_steps=50, threshold=85.0
         ).fit()
 
         forecast = model.forecast(forecast_steps)
-
         overheat_points = np.where(forecast >= threshold)[0]
 
         if len(overheat_points) > 0:

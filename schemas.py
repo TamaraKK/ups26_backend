@@ -223,5 +223,27 @@ class ModelDeviceAnomalies(BaseModel):
     status: str
     anomalies_count: int
     critical_points: str
+
+class PredictiveReport(BaseModel):
+    status: str # "stable", "warning", "critical", "collecting_data"
+    minutes_until_failure: int
+    current_value: Optional[float] = None
+    forecast_max: Optional[float] = None
+    threshold: Optional[float] = None 
+    message: Optional[str] = None
+
+class PredictiveAlertOut(BaseModel):
+    id: int
+    device_id: int
+    status: str
+    minutes_to_failure: int
+    forecast_max: float
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)    
     
+class PredictiveAlertHistory(BaseModel):
+    device_id: int
+    alerts: List[PredictiveAlertOut]
+
 GroupDetail.model_rebuild()
